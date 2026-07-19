@@ -358,7 +358,7 @@ def get_history():
 
 if __name__ == "__main__":
     print("\nBhashaBridge is starting...")
-    print("   Open http://localhost:5000 in your browser")
+    print("   Open https://bhashabridge-roqp.onrender.com in your browser")
     print("   Press Ctrl+C to stop\n")
 
     app.run(

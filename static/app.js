@@ -22,7 +22,7 @@ let selectedFile = null;
 let activeSpeech = null;
 let activeSpeechBtn = null;
 
-const API_BASE = "http://localhost:5000";
+const API_BASE = "https://bhashabridge-roqp.onrender.com";
 
 // Boot: run once the page is ready
 
