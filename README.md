@@ -113,7 +113,7 @@ TESSERACT_PATH=C:\Program Files\Tesseract-OCR\tesseract.exe
 python app.py
 ```
 
-Open your browser and go to (https://github.com/Syed-srh/BhashaBridge)
+Open your browser and go to https://bhashabridge-roqp.onrender.com
 
 
 ## 📁 Project Structure
