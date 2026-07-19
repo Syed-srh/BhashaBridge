@@ -72,9 +72,7 @@ Before running BhashaBridge, ensure you have the following installed:
 ### 1. Clone the repository
 
 ```bash
-<<<<<<< HEAD
 git clone https://github.com/your-username/BhashaBridge.git
-=======
 git clone https://github.com/Syed-srh/BhashaBridge.git
 >>>>>>> 3d7af1eb6cfbd67e2b73d0684d70637520293664
 cd BhashaBridge
@@ -115,12 +113,8 @@ TESSERACT_PATH=C:\Program Files\Tesseract-OCR\tesseract.exe
 python app.py
 ```
 
-<<<<<<< HEAD
-Open your browser and go to **http://localhost:5000**
+Open your browser and go to (https://github.com/Syed-srh/BhashaBridge)
 
-=======
->>>>>>> 3d7af1eb6cfbd67e2b73d0684d70637520293664
----
 
 ## 📁 Project Structure
 
