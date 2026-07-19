@@ -1,9 +1,0 @@
-flask
-flask-cors
-python-dotenv
-pytesseract
-Pillow
-pdfplumber
-requests
-beautifulsoup4
-groq

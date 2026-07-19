@@ -1,4 +1,66 @@
 
+/* Responsive */
+@media (max-width: 640px) {
+  :root {
+     font-size: 15px;
+       /* Spacing */
+    --space-1:  4px;
+    --space-2:  8px;
+    --space-3:  12px;
+    --space-4:  16px;
+    --space-5:  20px;
+    --space-6:  24px;
+    --space-8:  32px;
+    --space-10: 40px;
+    --space-12: 48px;
+    --space-16: 64px;
+
+ }
+
+  .container { 
+    padding: 0 var(--space-4); 
+}
+
+  .card { 
+    padding: var(--space-6); 
+}
+
+  .info-cards { 
+    grid-template-columns: 1fr; 
+}
+
+  .lang-grid { 
+    grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); 
+}
+
+  .stats-bar { 
+    gap: var(--space-5); 
+}
+
+  .results-header { 
+    flex-direction: column; 
+}
+
+  .mode-tab span.tab-label { 
+    display: none; 
+}
+
+  .history-source { 
+    max-width: 180px; 
+}
+}
+
+@media (max-width: 400px) {
+  .lang-grid { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* Accessibility */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
 
 
 /* Responsive */
