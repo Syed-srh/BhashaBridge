@@ -6,7 +6,8 @@
 BhashaBridge is a Flask web app that takes any Indian government welfare scheme document (PDF, image, or URL) and transforms the dense bureaucratic text into a clear, plain-language explanation — translated into any of the 22 scheduled Indian languages.
 
 
-Website: https://bhashabridge-roqp.onrender.com/
+Website: https://bhashabridge-roqp.onrender.com 
+---
 Github link: https://github.com/Syed-srh/BhashaBridge
 
 ---
