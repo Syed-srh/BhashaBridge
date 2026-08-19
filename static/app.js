@@ -1,28 +1,21 @@
 /*
  * BhashaBridge — Frontend Logic
- *
- * What this file handles:
- *  - Loading languages from the backend and building the language picker
- *  - Letting users switch between file-upload and URL modes
- *  - Drag-and-drop file handling
- *  - Submitting to the Flask backend and showing live progress steps
- *  - Rendering results into the four info cards
- *  - Text-to-speech via the browser's built-in speechSynthesis API
- *  - Loading and displaying query history
- *  - Copy / Share buttons
- *  - Toast notifications for errors
  */
 
-// We keep a reference to the current result so the voice button can read it
 let currentResult = null;
 let selectedLanguageCode = "en";
+let selectedLanguageVoiceSupported = true;
+let selectedLanguageBcp47 = "en-IN";
 let selectedFile = null;
 
 // speechSynthesis state
 let activeSpeech = null;
 let activeSpeechBtn = null;
 
-const API_BASE = "https://bhashabridge-roqp.onrender.com";
+// Auto-detect backend: use same origin in production, localhost in dev
+const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+  ? ''   // same-origin — Flask serves both the page and the API
+  : 'https://bhashabridge-roqp.onrender.com';
 
 // Boot: run once the page is ready
 
@@ -33,6 +26,8 @@ document.addEventListener("DOMContentLoaded", () => {
   setupDropZone();
   setupFormActions();
   setupResultButtons();
+  initDiscoverSection();
+  setupSpeechToText();
 });
 
 // Language picker
@@ -43,19 +38,20 @@ async function loadLanguages() {
     const langs = await resp.json();
     buildLanguageGrid(langs);
   } catch {
-    // If backend isn't running yet, show a small offline notice
     const grid = document.getElementById("lang-grid");
-    grid.innerHTML = `<p style="color:var(--text-muted);font-size:var(--text-sm);grid-column:1/-1">
-      Start the backend (python app.py) to load languages.
-    </p>`;
+    if (grid) {
+      grid.innerHTML = `<p style="color:var(--text-muted);font-size:var(--text-sm);grid-column:1/-1">
+        Start the backend (python app.py) to load languages.
+      </p>`;
+    }
   }
 }
 
 function buildLanguageGrid(languages) {
   const grid = document.getElementById("lang-grid");
+  if (!grid) return;
   grid.innerHTML = "";
 
-  // RTL language codes: Urdu, Kashmiri, Sindhi use Arabic script
   const RTL_LANG_CODES = new Set(['ur', 'ks', 'sd']);
 
   languages.forEach(lang => {
@@ -66,19 +62,18 @@ function buildLanguageGrid(languages) {
     btn.setAttribute("aria-checked", lang.code === "en" ? "true" : "false");
     btn.setAttribute("aria-label", `${lang.name} — ${lang.native}`);
 
-    // RTL: Arabic-script languages need dir=rtl on the button
     if (RTL_LANG_CODES.has(lang.code)) {
       btn.setAttribute('dir', 'rtl');
     }
 
+    const isVoice = (lang.voice_supported !== false);
     btn.innerHTML = `
       <span class="lang-native">${lang.native}</span>
       <span class="lang-english">${lang.name}</span>
-      <span class="lang-transition-badge" aria-hidden="true">en ➔ ${lang.code}</span>
+      <span class="lang-transition-badge" aria-hidden="true">${isVoice ? "🎙️" : "📝"} en ➔ ${lang.code}</span>
     `;
 
     btn.addEventListener("click", () => {
-      // Deselect all, select this one
       grid.querySelectorAll(".lang-btn").forEach(b => {
         b.classList.remove("selected");
         b.setAttribute("aria-checked", "false");
@@ -86,16 +81,86 @@ function buildLanguageGrid(languages) {
       btn.classList.add("selected");
       btn.setAttribute("aria-checked", "true");
       selectedLanguageCode = lang.code;
+      selectedLanguageVoiceSupported = isVoice;
+      selectedLanguageBcp47 = lang.bcp47_code || "en-IN";
 
-      // Announce to screen readers via aria-live region
+      updateVoiceButtonsVisibility();
+
       const announcer = document.getElementById("lang-selection-announce");
       if (announcer) {
-        announcer.textContent = `${lang.name} selected`;
+        announcer.textContent = `${lang.name} selected ${isVoice ? '(Voice readout supported)' : '(Voice disabled for this language)'}`;
       }
     });
 
     grid.appendChild(btn);
   });
+
+  updateVoiceButtonsVisibility();
+}
+
+function updateVoiceButtonsVisibility() {
+  const voiceButtons = document.querySelectorAll(".btn-card-voice, #btn-voice-all");
+  voiceButtons.forEach(btn => {
+    if (!selectedLanguageVoiceSupported) {
+      btn.style.opacity = "0.4";
+      btn.style.pointerEvents = "none";
+      btn.title = "Voice readout not available in this language";
+    } else {
+      btn.style.opacity = "1";
+      btn.style.pointerEvents = "auto";
+      btn.title = "Read aloud";
+    }
+  });
+}
+
+function setupSpeechToText() {
+  const micBtn = document.getElementById("btn-stt-discover");
+  const searchInput = document.getElementById("discover-search-input");
+  if (!micBtn || !searchInput) return;
+
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    micBtn.title = "Speech recognition not supported on this browser";
+    return;
+  }
+
+  const recognition = new SpeechRecognition();
+  recognition.continuous = false;
+  recognition.interimResults = false;
+
+  micBtn.addEventListener("click", () => {
+    if (micBtn.classList.contains("listening")) {
+      recognition.stop();
+      micBtn.classList.remove("listening");
+      return;
+    }
+
+    recognition.lang = selectedLanguageBcp47 || "en-IN";
+    try {
+      recognition.start();
+      micBtn.classList.add("listening");
+      micBtn.title = "Listening... Speak your query";
+    } catch (e) {
+      console.warn("Speech recognition error:", e);
+    }
+  });
+
+  recognition.onresult = (event) => {
+    const transcript = event.results[0][0].transcript;
+    searchInput.value = transcript;
+    micBtn.classList.remove("listening");
+    micBtn.title = "Speak your query";
+    fetchRecommendations(transcript);
+  };
+
+  recognition.onerror = () => {
+    micBtn.classList.remove("listening");
+    micBtn.title = "Speak your query";
+  };
+
+  recognition.onend = () => {
+    micBtn.classList.remove("listening");
+  };
 }
 
 // Mode tabs (File upload vs URL)
@@ -249,7 +314,7 @@ function setupFormActions() {
 }
 
 async function handleSubmit() {
-  const urlValue = document.getElementById("url-input").value.trim();
+  const urlValue  = document.getElementById("url-input").value.trim();
   const activePanel = document.querySelector(".input-panel.active").id;
 
   // Build form data
@@ -265,11 +330,11 @@ async function handleSubmit() {
     return;
   }
 
-  // Hide results, show progress
+  // Hide results, show progress (SSE events will drive step activation)
   document.getElementById("results-section").classList.remove("visible");
   showProgress();
 
-  // Set up visual preview in progress background for continuity
+  // Visual preview in progress background for continuity
   const previewWrap = document.getElementById("progress-preview-wrap");
   if (previewWrap) {
     previewWrap.innerHTML = "";
@@ -306,35 +371,73 @@ async function handleSubmit() {
     }
   }
 
-  // Disable button during processing
   const btn = document.getElementById("btn-submit");
   btn.disabled = true;
   btn.classList.add("processing");
 
   try {
-    const resp = await fetch(`${API_BASE}/api/process`, {
+    // ── Open a streaming fetch to the SSE endpoint ───────────────────
+    const resp = await fetch(`${API_BASE}/api/process-stream`, {
       method: "POST",
-      body: formData,
+      body:   formData,
     });
 
-    const data = await resp.json();
-
-    if (!resp.ok || data.error) {
-      throw new Error(data.error || "Something went wrong. Please try again.");
+    if (!resp.ok) {
+      // Non-200 before any streaming starts — parse as plain JSON error
+      const err = await resp.json().catch(() => ({ error: "Server error. Please try again." }));
+      throw new Error(err.error || "Server error. Please try again.");
     }
 
-    markAllStepsDone();
+    // ── Read SSE frames from the response body stream ───────────────
+    const reader  = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let   buffer  = "";
 
-    // Show SUCCESS state briefly
-    btn.classList.remove("processing");
-    btn.classList.add("success");
+    outer: while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
 
-    // Small pause so the user sees the "Done!" step and success state
-    await sleep(900);
+      buffer += decoder.decode(value, { stream: true });
 
-    currentResult = data;
-    renderResults(data);
-    loadHistory(); // Refresh history after a new result
+      // SSE messages are delimited by two consecutive newlines
+      const parts = buffer.split("\n\n");
+      buffer = parts.pop(); // last element may be an incomplete frame
+
+      for (const part of parts) {
+        // Find the data line inside this SSE frame
+        const dataLine = part.split("\n").find(l => l.startsWith("data:"));
+        if (!dataLine) continue;
+
+        let payload;
+        try {
+          payload = JSON.parse(dataLine.slice(5).trim());
+        } catch {
+          continue; // malformed JSON — skip
+        }
+
+        // ─ Error from server ─
+        if (payload.type === "error") {
+          throw new Error(payload.message);
+        }
+
+        // ─ Stage progress event ─
+        if (typeof payload.step === "number" && payload.stage) {
+          activateStreamStep(payload.step);
+        }
+
+        // ─ Final result ─
+        if (payload.type === "complete") {
+          markAllStepsDone();
+          btn.classList.remove("processing");
+          btn.classList.add("success");
+          await sleep(700);
+          currentResult = payload.result;
+          renderResults(payload.result);
+          loadHistory();
+          break outer;
+        }
+      }
+    }
 
   } catch (err) {
     hideProgress();
@@ -379,7 +482,7 @@ function showProgress() {
   const section = document.getElementById("progress-section");
   section.classList.add("visible");
 
-  // Reset all steps and track
+  // Reset all steps and track bar
   STEPS.forEach(id => {
     const el = document.getElementById(id);
     el.classList.remove("active", "done");
@@ -389,33 +492,51 @@ function showProgress() {
   const num = document.getElementById("progress-step-num");
   if (num) num.textContent = "1";
 
-  // Announce first step immediately
+  // Announce the first step to screen readers immediately.
+  // The actual step activation is driven by SSE events from the server
+  // (activateStreamStep is called as each "stage" event arrives).
   announceProgressStep(STEP_LABELS[0]);
-
-  // Animate through steps
-  animateStep(0);
 }
 
+// animateStep is kept for any future timer-based fallback use,
+// but the main pipeline now uses activateStreamStep driven by SSE events.
 function animateStep(index) {
-  if (index >= STEPS.length - 1) return; // Don't auto-advance to "done"
-
+  if (index >= STEPS.length - 1) return;
   const el = document.getElementById(STEPS[index]);
   el.classList.add("active");
-
-  // Drive visual track + step counter
   updateProgressTrack(index);
-
-  // Each step stays visible for 1.4s, then "completes"
   setTimeout(() => {
     el.classList.remove("active");
     el.classList.add("done");
-
-    // Start next step (except the last one which waits for real completion)
     if (index + 1 < STEPS.length - 1) {
       announceProgressStep(STEP_LABELS[index + 1]);
       animateStep(index + 1);
     }
   }, 1400);
+}
+
+/*
+ * activateStreamStep(index)
+ * Called by handleSubmit() each time a {stage, step} SSE event arrives.
+ * Marks all previous steps as done, activates the current step,
+ * and updates the track bar + aria-live announcer.
+ */
+function activateStreamStep(index) {
+  // Everything before this index is done
+  for (let i = 0; i < index; i++) {
+    const el = document.getElementById(STEPS[i]);
+    if (el) { el.classList.remove("active"); el.classList.add("done"); }
+  }
+  // Deactivate any currently active step first
+  STEPS.forEach(id => document.getElementById(id)?.classList.remove("active"));
+  // Activate the arriving step
+  const current = document.getElementById(STEPS[index]);
+  if (current) {
+    current.classList.remove("done");
+    current.classList.add("active");
+  }
+  updateProgressTrack(index);
+  announceProgressStep(STEP_LABELS[index]);
 }
 
 function markAllStepsDone() {
@@ -502,54 +623,127 @@ function populateImportantCard(data) {
   const el = document.getElementById("result-important");
   if (!el) return;
 
-  const textToScan = [data.eligibility, data.documents, data.benefit, data.how_to_apply].join(" ");
-  
-  // Generic important civic advice
-  let items = [
-    "Ensure your <strong>Aadhaar card</strong> is linked to your active bank account for direct benefit transfer (DBT).",
-    "Never pay any fee to middlemen or brokers. This service is <strong>completely free</strong>."
-  ];
+  const textToScan = [
+    data.eligibility, data.documents, data.benefit, data.how_to_apply, data.restrictions
+  ].join(" ");
 
-  // Income cap check
-  const incomeMatch = textToScan.match(/(income\s?(limit|cap)?\sof\s?Rs\.\s?\d+[\d,]*|income\s?below\s?Rs\.\s?\d+[\d,]*|income\s?less\s?than\s?Rs\.\s?\d+[\d,]*)/i);
-  if (incomeMatch) {
-    items.push(`Income cap detected: <span class="bb-highlight">${incomeMatch[0]}</span>.`);
+  let items = [];
+
+  // ── Real restrictions from the LLM pipeline (Step 1 extract field) ───────
+  const SENTINEL = "This information was not available in the document.";
+  const restrictions = (data.restrictions || "").trim();
+  if (restrictions && restrictions !== SENTINEL) {
+    // Each newline in restrictions becomes its own bullet
+    restrictions.split(/\n+/).forEach(line => {
+      const t = line.replace(/^[•\-\*\d]+[\.\)]\s*/, "").trim();
+      if (t) items.push(escapeHtml(t));
+    });
   }
 
-  // Age limit check
+  // ── Always-useful civic tips ──────────────────────────────────────────────
+  items.push(
+    "Ensure your <strong>Aadhaar card</strong> is linked to your active bank account for direct benefit transfer (DBT)."
+  );
+  items.push(
+    "Never pay any fee to middlemen or brokers. This service is <strong>completely free</strong>."
+  );
+
+  // ── Heuristic: income cap ─────────────────────────────────────────────────
+  const incomeMatch = textToScan.match(
+    /(income\s?(limit|cap)?\sof\s?Rs\.\s?\d+[\d,]*|income\s?below\s?Rs\.\s?\d+[\d,]*|income\s?less\s?than\s?Rs\.\s?\d+[\d,]*)/i
+  );
+  if (incomeMatch) {
+    items.push(`Income cap detected: <span class="bb-highlight">${escapeHtml(incomeMatch[0])}</span>.`);
+  }
+
+  // ── Heuristic: age limit ──────────────────────────────────────────────────
   const ageMatch = textToScan.match(/(\bage\s?limit\b|\bunder\s?\d+\s?years\b|\babove\s?\d+\s?years\b)/i);
   if (ageMatch) {
-    items.push(`Age eligibility rule: Verify that you are <span class="bb-highlight-blue">${ageMatch[0]}</span> before applying.`);
+    items.push(
+      `Age eligibility rule: Verify that you are <span class="bb-highlight-blue">${escapeHtml(ageMatch[0])}</span> before applying.`
+    );
   }
 
-  // Deadline check
+  // ── Heuristic: deadline ───────────────────────────────────────────────────
   const deadlineMatch = textToScan.match(/(deadline|last date|apply before|due date|expiry)/i);
   if (deadlineMatch) {
-    items.push("Pay close attention to the application deadline. Apply early to avoid server failure.");
+    items.push("Pay close attention to the application deadline. Apply early to avoid server congestion.");
   }
 
-  let html = "<ul>";
-  items.forEach(item => {
-    html += `<li>${item}</li>`;
+  // De-duplicate and render
+  const seen = new Set();
+  const deduped = items.filter(i => {
+    const key = i.replace(/<[^>]+>/g, "").trim().slice(0, 60);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
   });
-  html += "</ul>";
 
-  el.innerHTML = html;
+  el.innerHTML = "<ul>" + deduped.map(i => `<li>${i}</li>`).join("") + "</ul>";
 }
 
 function renderResults(data) {
-  // Fill in the 6 info cards
+  // Fill in Cards 1 & 3
   document.getElementById("result-summary").innerHTML = formatContent(data.simplified_text || "");
-  document.getElementById("result-eligibility").innerHTML = formatContent(data.eligibility  || "");
-  document.getElementById("result-documents").innerHTML  = formatContent(data.documents     || "");
-  document.getElementById("result-benefit").innerHTML    = formatContent(data.benefit       || "");
-  document.getElementById("result-apply").innerHTML      = formatContent(data.how_to_apply  || "");
-  
-  // Populate Card 6
+  document.getElementById("result-benefit").innerHTML = formatContent(data.benefit || "");
+
+  // Card 2: Who Can Apply?
+  document.getElementById("result-eligibility").innerHTML = formatContent(data.eligibility || "");
+
+  // Card 4: What Do You Need? (Interactive Document Checklist)
+  const docsContainer = document.getElementById("result-documents");
+  if (docsContainer) {
+    if (data.action_guide && data.action_guide.documents_checklist && data.action_guide.documents_checklist.length > 0) {
+      const itemsHtml = data.action_guide.documents_checklist.map(item => `
+        <label class="doc-check-item" style="display: flex; align-items: flex-start; gap: 10px; margin-bottom: 8px; cursor: pointer;">
+          <input type="checkbox" style="margin-top: 3px; accent-color: var(--blue-accent, #3B82F6);" />
+          <span style="font-size: var(--t-xs); color: var(--text-primary);">${escapeHtml(item.label)}</span>
+        </label>
+      `).join("");
+      docsContainer.innerHTML = `
+        <div style="font-size: var(--t-xs); color: var(--text-muted); margin-bottom: var(--s3); font-weight: 600;">
+          <i class="fa-solid fa-square-check" style="color: var(--blue-accent, #3B82F6);"></i> Document Checklist (Click to check off):
+        </div>
+        <div class="action-checklist-wrap">${itemsHtml}</div>
+      `;
+    } else {
+      docsContainer.innerHTML = formatContent(data.documents || "");
+    }
+  }
+
+  // Card 5: How Do You Apply? (Numbered Steps)
+  const applyContainer = document.getElementById("result-apply");
+  if (applyContainer) {
+    if (data.action_guide && data.action_guide.application_steps && data.action_guide.application_steps.length > 0) {
+      const stepsHtml = data.action_guide.application_steps.map(step => `
+        <div style="display: flex; gap: 12px; margin-bottom: 12px; align-items: flex-start;">
+          <span style="background: linear-gradient(135deg, var(--blue-accent, #3B82F6), #2563EB); color: #fff; width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700; flex-shrink: 0; margin-top: 2px;">${step.step_number}</span>
+          <div style="font-size: var(--t-xs); color: var(--text-primary); line-height: 1.5;">${escapeHtml(step.description)}</div>
+        </div>
+      `).join("");
+      applyContainer.innerHTML = `
+        <div style="font-size: var(--t-xs); color: var(--text-muted); margin-bottom: var(--s3); font-weight: 600;">
+          <i class="fa-solid fa-list-ol" style="color: var(--blue-accent, #3B82F6);"></i> Step-by-Step Action Guide:
+        </div>
+        <div class="action-steps-wrap">${stepsHtml}</div>
+      `;
+    } else {
+      applyContainer.innerHTML = formatContent(data.how_to_apply || "");
+    }
+  }
+
+  // Card 6: Important Information
   populateImportantCard(data);
+
+  // Render RAG Confidence Badges & Show Source Citation Toggles
+  renderCardCitations(data);
+
+  // Attach Thumbs Up / Down Feedback Controls
+  attachCardFeedbackControls(data);
 
   // Source label
   const src = data.source || "Untitled document";
+  const overallConf = data.overall_confidence ? ` • ${data.overall_confidence}` : "";
   document.getElementById("result-source-label").textContent =
     "Source: " + (src.length > 70 ? src.slice(0, 67) + "…" : src);
 
@@ -564,6 +758,144 @@ function renderResults(data) {
   }, 100);
 }
 
+function renderCardCitations(data) {
+  if (!data || !data.citations) return;
+
+  const fieldCardMap = {
+    simplified_text: "summary",
+    eligibility:     "eligibility",
+    benefit:         "benefit",
+    documents:       "documents",
+    how_to_apply:    "apply",
+  };
+
+  Object.entries(data.citations).forEach(([fieldKey, cit]) => {
+    const cardClass = fieldCardMap[fieldKey];
+    if (!cardClass) return;
+
+    const card = document.querySelector(`.info-card.${cardClass}`);
+    if (!card) return;
+
+    const footer = card.querySelector(".info-card-footer");
+    if (!footer) return;
+
+    // Remove old citation elements if re-rendering
+    card.querySelectorAll(".source-citation-box, .btn-card-source").forEach(el => el.remove());
+    card.querySelectorAll(".confidence-badge").forEach(el => el.remove());
+
+    // Confidence badge HTML
+    const badgeHtml = `
+      <span class="confidence-badge ${cit.confidence_class}">
+        ${cit.confidence_icon} ${escapeHtml(cit.confidence_label)}
+      </span>
+    `;
+
+    // Show source button
+    const btn = document.createElement("button");
+    btn.className = "btn-card-source";
+    btn.innerHTML = `<i class="fa-solid fa-quote-left"></i> Show Source (${escapeHtml(cit.source_chunk_id || "Chunk #1")})`;
+
+    // Collapsible citation box
+    const box = document.createElement("div");
+    box.className = "source-citation-box";
+    box.innerHTML = `
+      <div class="source-citation-header">
+        <span><i class="fa-solid fa-file-lines"></i> ${escapeHtml(cit.source_chunk_id || "Source Chunk")} Citation</span>
+        <span style="font-size:0.7rem; opacity:0.8;">Relevance: ${Math.round((cit.relevance_score || 0.8) * 100)}%</span>
+      </div>
+      <div class="source-citation-excerpt">"${escapeHtml(cit.source_excerpt)}"</div>
+    `;
+
+    btn.addEventListener("click", () => {
+      box.classList.toggle("visible");
+      btn.innerHTML = box.classList.contains("visible")
+        ? `<i class="fa-solid fa-eye-slash"></i> Hide Source`
+        : `<i class="fa-solid fa-quote-left"></i> Show Source (${escapeHtml(cit.source_chunk_id || "Chunk #1")})`;
+    });
+
+    footer.appendChild(btn);
+    card.appendChild(box);
+
+    const header = card.querySelector(".info-card-header");
+    if (header) {
+      header.insertAdjacentHTML("beforeend", badgeHtml);
+    }
+  });
+}
+
+function attachCardFeedbackControls(data) {
+  if (!data) return;
+
+  const cardStageMap = [
+    { cardSelector: ".info-card.summary",     stage: "simplification" },
+    { cardSelector: ".info-card.eligibility", stage: "eligibility" },
+    { cardSelector: ".info-card.benefit",     stage: "extraction" },
+    { cardSelector: ".info-card.documents",   stage: "extraction" },
+    { cardSelector: ".info-card.apply",       stage: "simplification" },
+    { cardSelector: ".info-card.important",   stage: "extraction" },
+  ];
+
+  cardStageMap.forEach(({ cardSelector, stage }) => {
+    const card = document.querySelector(cardSelector);
+    if (!card) return;
+
+    const footer = card.querySelector(".info-card-footer");
+    if (!footer) return;
+
+    card.querySelectorAll(".feedback-group").forEach(el => el.remove());
+
+    const group = document.createElement("div");
+    group.className = "feedback-group";
+    group.innerHTML = `
+      <button class="btn-feedback btn-thumb-up" title="Helpful section" aria-label="Thumbs up">
+        <i class="fa-regular fa-thumbs-up"></i>
+      </button>
+      <button class="btn-feedback btn-thumb-down" title="Needs improvement" aria-label="Thumbs down">
+        <i class="fa-regular fa-thumbs-down"></i>
+      </button>
+    `;
+
+    const btnUp = group.querySelector(".btn-thumb-up");
+    const btnDown = group.querySelector(".btn-thumb-down");
+
+    const sendFeedback = async (rating) => {
+      btnUp.classList.remove("active-up");
+      btnDown.classList.remove("active-down");
+
+      if (rating === "up") btnUp.classList.add("active-up");
+      if (rating === "down") btnDown.classList.add("active-down");
+
+      try {
+        await fetch(`${API_BASE}/api/feedback`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            result_id: data.scheme_name || data.source || "document",
+            stage: stage,
+            rating: rating,
+            language: selectedLanguageCode || "en",
+          }),
+        });
+
+        let sentLabel = group.querySelector(".feedback-sent-msg");
+        if (!sentLabel) {
+          sentLabel = document.createElement("span");
+          sentLabel.className = "feedback-sent-msg";
+          group.appendChild(sentLabel);
+        }
+        sentLabel.textContent = rating === "up" ? "Thanks! 👍" : "Noted 👎";
+      } catch (err) {
+        console.warn("Feedback post error:", err);
+      }
+    };
+
+    btnUp.addEventListener("click", () => sendFeedback("up"));
+    btnDown.addEventListener("click", () => sendFeedback("down"));
+
+    footer.appendChild(group);
+  });
+}
+
 // Text-to-Speech
 
 /*
@@ -571,6 +903,11 @@ function renderResults(data) {
  * The btn parameter is the button that was clicked — we toggle its style.
  */
 function speak(text, btn) {
+  if (!selectedLanguageVoiceSupported) {
+    showToast("Voice readout is not available for this language.");
+    return;
+  }
+
   // If we're already speaking, stop
   if (activeSpeech && window.speechSynthesis.speaking) {
     window.speechSynthesis.cancel();
@@ -1151,6 +1488,168 @@ function initBridgeAnimation() {
   });
 
   tl
+    .to(govPanel,   { x: 0, opacity: 1, duration: 1,   ease: 'power2.out' })
+    .to(lineFill,   { width: '100%',    duration: 2.2, ease: 'power1.inOut' }, '<0.3')
+    .to(dot,        { left: '100%',     duration: 2.2, ease: 'power1.inOut' }, '<')
+    .to(humanPanel, { x: 0, opacity: 1, duration: 1,   ease: 'power2.out' }, '-=1.2')
+    .to(comparison, { y: 0, opacity: 1, duration: 0.9, ease: 'power2.out' }, '-=0.5');
+}
+
+
+/* ── RTL language: apply dir="rtl" to result containers ─────────────────
+   When Urdu / Kashmiri / Sindhi is selected, result text containers
+   get dir="rtl" and the Noto Nastaliq Urdu font stack.
+   This is functional (bidi layout), not merely cosmetic. */
+function applyRTLToResults(langCode) {
+  const isRTL = BB_RTL_CODES.has(langCode);
+
+  const resultEls = [
+    document.getElementById('result-summary'),
+    document.getElementById('result-eligibility'),
+    document.getElementById('result-documents'),
+    document.getElementById('result-benefit'),
+    document.getElementById('result-apply'),
+  ];
+
+  resultEls.forEach(el => {
+    if (!el) return;
+    if (isRTL) {
+      el.setAttribute('dir', 'rtl');
+      el.style.fontFamily = "'Noto Nastaliq Urdu', 'Noto Sans', serif";
+      el.style.textAlign  = 'right';
+      el.style.lineHeight = '2';   // Nastaliq needs extra line-height
+    } else {
+      el.removeAttribute('dir');
+      el.style.fontFamily = '';
+      el.style.textAlign  = '';
+      el.style.lineHeight = '';
+    }
+  });
+}
+
+/* Patch language grid to trigger RTL on selection */
+function patchLangGridForRTL() {
+  const grid = document.getElementById('lang-grid');
+  if (!grid) return;
+
+  // Delegate: catches both click and keyboard activation
+  grid.addEventListener('click', (e) => {
+    const btn = e.target.closest('.lang-btn');
+    if (btn && btn.dataset.code) applyRTLToResults(btn.dataset.code);
+  });
+}
+
+
+/* ── Hero parallax (subtle only) ──────────────────────────────────────
+   As the user scrolls past the hero:
+     - echo-complex card fades and blurs a little more (reinforces
+       the "complexity fades" metaphor without overcomplicating it)
+     - orbs drift very slightly
+   rAF-throttled; disabled on mobile and reduced-motion. */
+function initHeroParallax() {
+  if (BB_REDUCED_MOTION) return;
+
+  // Mobile: don't waste cycles (orbs are hidden via CSS anyway)
+  if (window.innerWidth <= 580) return;
+
+  const heroWrapper  = document.getElementById('hero-wrapper');
+  const echoComplex  = document.querySelector('.echo-complex');
+  const orb1         = document.querySelector('.orb-1');
+  const orb2         = document.querySelector('.orb-2');
+
+  if (!heroWrapper) return;
+
+  let ticking = false;
+
+  function onScroll() {
+    const scrollY    = window.scrollY;
+    const heroH      = heroWrapper.offsetHeight;
+    if (scrollY > heroH) return; // only in-hero
+
+    const progress = Math.min(scrollY / heroH, 1);
+
+    // Echo complex: fade and blur as complexity "dissolves" on scroll
+    if (echoComplex) {
+      echoComplex.style.opacity = Math.max(0.5 - progress * 0.35, 0.12);
+      echoComplex.style.filter  = `blur(${0.6 + progress * 3.5}px)`;
+    }
+
+    // Orbs: very subtle vertical drift (parallax layer separation)
+    if (orb1) orb1.style.transform = `translateY(${scrollY * 0.1}px)`;
+    if (orb2) orb2.style.transform = `translateY(${scrollY * 0.07}px)`;
+  }
+
+  window.addEventListener('scroll', () => {
+    if (!ticking) {
+      requestAnimationFrame(() => { onScroll(); ticking = false; });
+      ticking = true;
+    }
+  }, { passive: true });
+}
+
+
+/* ── Boot Phase 1 features ───────────────────────────────────────────── */
+document.addEventListener('DOMContentLoaded', () => {
+  initLenis();
+  initScrollReveals();
+  initCountUp();
+  patchLangGridForRTL();
+  initHeroParallax();
+  initBridgeAnimation(); // Phase 4 — GSAP bridge scroll sequence
+  initExampleSchemes();  // Phase 4 — sample scheme cards
+});
+
+
+/* ── Phase 4: GSAP Bridge Animation ───────────────────────────────────── */
+/*
+  Scroll-driven timeline using GSAP + ScrollTrigger.
+  Sequence: gov panel fades in → line draws + dot travels →
+            human panel appears → comparison cards reveal.
+  If GSAP is not loaded (CDN fail) or reduced-motion is set,
+  all elements are made visible immediately via fallback.
+*/
+function initBridgeAnimation() {
+  const section    = document.getElementById('bridge-section');
+  const govPanel   = document.getElementById('bridge-panel-gov');
+  const humanPanel = document.getElementById('bridge-panel-human');
+  const comparison = document.getElementById('bridge-comparison');
+  const lineFill   = document.getElementById('bridge-line-fill');
+  const dot        = document.getElementById('bridge-traveling-dot');
+
+  if (!section) return;
+
+  // Graceful fallback: show everything immediately if GSAP missing or reduced-motion
+  function revealAll() {
+    [govPanel, humanPanel, comparison].forEach(el => { if (el) el.style.opacity = '1'; });
+    if (lineFill) lineFill.style.width  = '100%';
+    if (dot)      dot.style.left        = '100%';
+  }
+
+  if (BB_REDUCED_MOTION || typeof gsap === 'undefined' || typeof ScrollTrigger === 'undefined') {
+    revealAll();
+    return;
+  }
+
+  // Register ScrollTrigger plugin
+  gsap.registerPlugin(ScrollTrigger);
+
+  // Set initial states (elements already CSS opacity:0)
+  gsap.set(govPanel,   { x: -28, opacity: 0 });
+  gsap.set(humanPanel, { x:  28, opacity: 0 });
+  gsap.set(comparison, { y:  28, opacity: 0 });
+  gsap.set(lineFill,   { width: '0%' });
+  gsap.set(dot,        { left: '0%' });
+
+  const tl = gsap.timeline({
+    scrollTrigger: {
+      trigger: section,
+      start:   'top 65%',
+      end:     'bottom 30%',
+      scrub:   1.6,
+    }
+  });
+
+  tl
     // Gov panel slides in from left
     .to(govPanel,   { x: 0, opacity: 1, duration: 1,   ease: 'power2.out' })
     // Bridge line draws left-to-right simultaneously
@@ -1167,43 +1666,223 @@ function initBridgeAnimation() {
 /* ── Phase 4: Example Scheme Cards ─────────────────────────────────── */
 /*
   Each card has data-url set to a real govt scheme URL.
-  Clicking: switches to URL tab → pre-fills the URL input →
-            scrolls to the upload section → auto-submits after
-            a short delay (letting the scroll settle).
+  Clicking card body: switches to URL tab → pre-fills the URL input →
+                      scrolls to the upload section → auto-submits.
+  Clicking external link icon: opens official website in a new tab directly.
 */
 function initExampleSchemes() {
   const cards = document.querySelectorAll('.example-card');
   cards.forEach(card => {
-    card.addEventListener('click', async () => {
+    // External link icon handler
+    const extLink = card.querySelector('.example-card-ext');
+    if (extLink) {
+      extLink.addEventListener('click', (e) => {
+        e.stopPropagation();
+      });
+    }
+
+    card.addEventListener('click', async (e) => {
+      if (e.target.closest('.example-card-ext')) return;
+
       const url = card.dataset.url;
       if (!url) return;
 
-      // Visual loading state on the clicked card
+      // Visual loading indicator on card
       card.classList.add('loading');
 
-      // Switch to URL tab (trigger the existing tab click logic)
+      // 1. Activate URL tab & panel
       const urlTab = document.getElementById('tab-url');
-      if (urlTab) urlTab.click();
+      const parent = urlTab ? urlTab.closest('.mode-tabs') : null;
 
-      // Pre-fill the URL input
+      document.querySelectorAll('.mode-tab').forEach(t => {
+        t.classList.remove('active');
+        t.setAttribute('aria-selected', 'false');
+      });
+      if (urlTab) {
+        urlTab.classList.add('active');
+        urlTab.setAttribute('aria-selected', 'true');
+      }
+      if (parent) parent.classList.add('url-active');
+
+      document.querySelectorAll('.input-panel').forEach(p => p.classList.remove('active'));
+      const urlPanel = document.getElementById('panel-url');
+      if (urlPanel) urlPanel.classList.add('active');
+
+      // 2. Clear file selection
+      selectedFile = null;
+      const fileInfo = document.getElementById('file-info');
+      if (fileInfo) fileInfo.classList.remove('visible');
+
+      // 3. Set URL input value
       const urlInput = document.getElementById('url-input');
       if (urlInput) {
         urlInput.value = url;
-        urlInput.dispatchEvent(new Event('input')); // triggers updateSubmitButton()
       }
+      updateSubmitButton();
 
-      // Scroll the input section into view
+      // 4. Smooth scroll to input section
       const inputSection = document.querySelector('.input-section');
       if (inputSection) {
         inputSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
 
-      // Remove loading state and auto-submit after scroll settles
+      // 5. Submit form after scroll settles
       setTimeout(() => {
         card.classList.remove('loading');
         const btn = document.getElementById('btn-submit');
-        if (btn && !btn.disabled) btn.click();
-      }, 750);
+        if (btn && !btn.disabled) {
+          btn.click();
+        }
+      }, 550);
+    });
+  });
+}
+
+/* ── Layer 3: Discover & Recommendation Engine ────────────────────────── */
+
+function initDiscoverSection() {
+  const searchInput = document.getElementById("discover-search-input");
+  const chipsContainer = document.getElementById("discover-chips");
+  const grid = document.getElementById("discover-grid");
+
+  if (!grid) return;
+
+  // Load initial schemes
+  fetchRecommendations();
+
+  // Debounced search input
+  let searchTimer = null;
+  if (searchInput) {
+    searchInput.addEventListener("input", () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => {
+        const q = searchInput.value.trim();
+        fetchRecommendations(q);
+      }, 300);
+    });
+  }
+
+  // Category chips
+  if (chipsContainer) {
+    chipsContainer.addEventListener("click", (e) => {
+      const chip = e.target.closest(".discover-chip");
+      if (!chip) return;
+
+      chipsContainer.querySelectorAll(".discover-chip").forEach(c => c.classList.remove("active"));
+      chip.classList.add("active");
+
+      const cat = chip.dataset.category;
+      if (cat === "all") {
+        if (searchInput) searchInput.value = "";
+        fetchRecommendations();
+      } else {
+        const queryText = chip.textContent.replace(/^[^\w\s]+/, "").trim();
+        if (searchInput) searchInput.value = queryText;
+        fetchRecommendations(queryText);
+      }
+    });
+  }
+}
+
+async function fetchRecommendations(query = "", profile = null) {
+  const grid = document.getElementById("discover-grid");
+  if (!grid) return;
+
+  grid.innerHTML = `
+    <div style="grid-column: 1/-1; text-align: center; padding: var(--s6); color: var(--text-muted);">
+      <i class="fa-solid fa-spinner fa-spin" style="font-size: 1.5rem; margin-bottom: var(--s2);"></i>
+      <p style="font-size: var(--t-xs);">Finding matching government schemes...</p>
+    </div>
+  `;
+
+  try {
+    const resp = await fetch(`${API_BASE}/api/recommendations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query, profile, top_k: 4 }),
+    });
+
+    if (!resp.ok) throw new Error("Failed to fetch recommendations");
+    const schemes = await resp.json();
+    renderRecommendationCards(schemes);
+  } catch (err) {
+    grid.innerHTML = `
+      <div style="grid-column: 1/-1; text-align: center; padding: var(--s4); color: var(--text-muted); font-size: var(--t-xs);">
+        Could not load recommendations. Start backend server (python app.py).
+      </div>
+    `;
+  }
+}
+
+function renderRecommendationCards(schemes) {
+  const grid = document.getElementById("discover-grid");
+  if (!grid) return;
+
+  if (!schemes || schemes.length === 0) {
+    grid.innerHTML = `
+      <div style="grid-column: 1/-1; text-align: center; padding: var(--s6); color: var(--text-muted); font-size: var(--t-sm);">
+        No matching schemes found. Try a broader search term like 'farmer' or 'healthcare'.
+      </div>
+    `;
+    return;
+  }
+
+  grid.innerHTML = schemes.map(s => {
+    const matchClass = s.match_class || "match-high";
+    const matchLabel = s.match_label || "High Match";
+    const matchPct   = s.match_percentage ? ` • ${s.match_percentage}` : "";
+
+    return `
+      <div class="rec-card" role="listitem">
+        <div>
+          <div class="rec-card-top">
+            <span class="rec-card-icon">${escapeHtml(s.icon || "📋")}</span>
+            <span class="match-badge ${matchClass}">
+              <i class="fa-solid fa-circle-check"></i>
+              ${escapeHtml(matchLabel)}${matchPct}
+            </span>
+          </div>
+          <div class="rec-card-title">${escapeHtml(s.scheme_name)}</div>
+          <div class="rec-card-category">${escapeHtml(s.category)}</div>
+          <div class="rec-card-summary">${escapeHtml(s.summary)}</div>
+        </div>
+
+        <div class="rec-card-actions">
+          <button class="btn-explain-rec" data-url="${escapeHtml(s.official_url)}" title="Explain ${escapeHtml(s.scheme_name)}">
+            <i class="fa-solid fa-wand-magic-sparkles"></i>
+            Explain Scheme
+          </button>
+          <a href="${escapeHtml(s.official_url)}" target="_blank" rel="noopener noreferrer" style="color: var(--text-muted); font-size: 0.85rem;" title="Official portal">
+            <i class="fa-solid fa-arrow-up-right-from-square"></i>
+          </a>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  // Attach click listener to "Explain Scheme" buttons
+  grid.querySelectorAll(".btn-explain-rec").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const url = btn.dataset.url;
+      if (!url) return;
+
+      // Activate URL tab
+      const urlTab = document.getElementById("tab-url");
+      if (urlTab) urlTab.click();
+
+      // Set URL input
+      const urlInput = document.getElementById("url-input");
+      if (urlInput) urlInput.value = url;
+      updateSubmitButton();
+
+      // Scroll to input section and trigger submit
+      const inputSection = document.querySelector(".input-section");
+      if (inputSection) inputSection.scrollIntoView({ behavior: "smooth", block: "center" });
+
+      setTimeout(() => {
+        const submitBtn = document.getElementById("btn-submit");
+        if (submitBtn && !submitBtn.disabled) submitBtn.click();
+      }, 500);
     });
   });
 }

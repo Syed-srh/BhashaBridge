@@ -318,52 +318,49 @@
   <main>
     <div class="container">
 
-      <!-- EXAMPLE EXPERIENCE — Try a sample scheme (Phase 4, new UI)
-           Helps first-time visitors see the product work without uploading anything. -->
-      <div class="example-strip" id="example-strip" data-reveal>
-        <div class="example-strip-header">
-          <span class="example-strip-label">
-            <i class="fa-solid fa-flask-vial" aria-hidden="true"></i>
-            Don&rsquo;t have a document?
-          </span>
-          <span class="example-strip-hint">Try one of these real schemes &rarr;</span>
+      <!-- DISCOVER SCHEMES — Layer 3 Recommendation Engine -->
+      <section class="discover-section" id="discover-section" data-reveal>
+        <div class="discover-header">
+          <div class="discover-title-box">
+            <i class="fa-solid fa-compass" aria-hidden="true"></i>
+            <div>
+              <h3>Discover Government Schemes</h3>
+              <p class="discover-subtitle">Search by situation or role to find matching schemes with vector similarity scores</p>
+            </div>
+          </div>
+          <div class="discover-search-box">
+            <i class="fa-solid fa-magnifying-glass discover-search-icon" aria-hidden="true"></i>
+            <input
+              type="text"
+              id="discover-search-input"
+              class="discover-search-input"
+              placeholder="e.g. 'I am a farmer and need financial support' or 'scholarship for daughter'"
+              aria-label="Search government schemes"
+            />
+            <button class="btn-mic" id="btn-stt-discover" title="Speak your query (Speech to Text)" aria-label="Speak your query">
+              <i class="fa-solid fa-microphone"></i>
+            </button>
+          </div>
         </div>
-        <div class="example-cards" role="list">
-          <button class="example-card" role="listitem" data-url="https://pmkisan.gov.in/" aria-label="Load PM-KISAN scheme as an example">
-            <span class="example-card-icon" aria-hidden="true">🌾</span>
-            <span class="example-card-body">
-              <span class="example-card-name">PM-KISAN</span>
-              <span class="example-card-desc">₹6,000/year income support for farmers</span>
-            </span>
-            <span class="example-card-arrow" aria-hidden="true">&rarr;</span>
-          </button>
-          <button class="example-card" role="listitem" data-url="https://pmjay.gov.in/" aria-label="Load Ayushman Bharat scheme as an example">
-            <span class="example-card-icon" aria-hidden="true">🏥</span>
-            <span class="example-card-body">
-              <span class="example-card-name">Ayushman Bharat</span>
-              <span class="example-card-desc">Free healthcare up to ₹5 lakh per family</span>
-            </span>
-            <span class="example-card-arrow" aria-hidden="true">&rarr;</span>
-          </button>
-          <button class="example-card" role="listitem" data-url="https://pmaymis.gov.in/" aria-label="Load PMAY Housing scheme as an example">
-            <span class="example-card-icon" aria-hidden="true">🏠</span>
-            <span class="example-card-body">
-              <span class="example-card-name">PMAY Housing</span>
-              <span class="example-card-desc">Subsidy for first-time home buyers</span>
-            </span>
-            <span class="example-card-arrow" aria-hidden="true">&rarr;</span>
-          </button>
-          <button class="example-card" role="listitem" data-url="https://scholarships.gov.in/" aria-label="Load National Scholarship Portal as an example">
-            <span class="example-card-icon" aria-hidden="true">🎓</span>
-            <span class="example-card-body">
-              <span class="example-card-name">NSP Scholarships</span>
-              <span class="example-card-desc">Central govt scholarships for students</span>
-            </span>
-            <span class="example-card-arrow" aria-hidden="true">&rarr;</span>
-          </button>
+
+        <!-- Quick Filter Chips -->
+        <div class="discover-chips" id="discover-chips" role="group" aria-label="Filter schemes by category">
+          <button class="discover-chip active" data-category="all">✨ All Schemes</button>
+          <button class="discover-chip" data-category="farmer">🌾 Farmers</button>
+          <button class="discover-chip" data-category="health">🏥 Healthcare</button>
+          <button class="discover-chip" data-category="housing">🏠 Housing</button>
+          <button class="discover-chip" data-category="student">🎓 Students & Education</button>
+          <button class="discover-chip" data-category="business">💼 Business & Loans</button>
+          <button class="discover-chip" data-category="women">👧 Women & Child</button>
+          <button class="discover-chip" data-category="artisan">🧰 Artisans & Workers</button>
         </div>
-      </div>
-      <!-- /EXAMPLE EXPERIENCE -->
+
+        <!-- Recommendation Cards Container -->
+        <div class="discover-recommendations-grid" id="discover-grid" role="list">
+          <!-- Populated dynamically by app.js from /api/recommendations -->
+        </div>
+      </section>
+      <!-- /DISCOVER SCHEMES -->
 
       <!-- INPUT SECTION ─ scroll reveal -->
       <section class="input-section" aria-labelledby="input-heading" data-reveal>
