@@ -1,6 +1,7 @@
 from dotenv import load_dotenv
 
 
+import sys
 import os
 import io
 import json
@@ -42,11 +43,12 @@ FALLBACK_MODELS = [
 
 
 
-# Tesseract path for Windows — adjust if yours is different
-pytesseract.pytesseract.tesseract_cmd = os.getenv(
-    "TESSERACT_PATH",
-    r"C:\Program Files\Tesseract-OCR\tesseract.exe"
-)
+# Tesseract path configuration (supports custom env var, Windows fallback, or system PATH)
+tess_path = os.getenv("TESSERACT_PATH")
+if tess_path:
+    pytesseract.pytesseract.tesseract_cmd = tess_path
+elif sys.platform == "win32" and os.path.exists(r"C:\Program Files\Tesseract-OCR\tesseract.exe"):
+    pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
 # Database setup
 
@@ -166,23 +168,39 @@ def process_document():
     """Non-streaming endpoint (kept for compatibility). Returns structured JSON."""
 
     language = request.form.get("language", "en").strip()
+    mode     = request.form.get("mode", "").strip()
+    url      = request.form.get("url", "").strip()
     ingested: IngestResult | None = None
 
-    url = request.form.get("url", "").strip()
-    if url:
+    has_file = False
+    file_bytes = None
+    filename = ""
+    if "file" in request.files:
+        f = request.files["file"]
+        if f and f.filename and f.filename.strip():
+            raw = f.read()
+            if len(raw) > 0:
+                file_bytes = raw
+                filename = f.filename
+                has_file = True
+
+    if has_file and (mode == "file" or not url):
+        try:
+            ingested = ingest_bytes(file_bytes, filename)
+        except IngestionError as e:
+            return jsonify({"error": str(e)}), 400
+        except Exception as e:
+            return jsonify({"error": f"Could not read the file: {e}"}), 400
+    elif url and mode != "file":
         try:
             ingested = ingest_url(url)
         except IngestionError as e:
             return jsonify({"error": str(e)}), 400
         except Exception as e:
             return jsonify({"error": f"Could not fetch that URL: {e}"}), 400
-
-    elif "file" in request.files:
-        f = request.files["file"]
-        if not f or not f.filename:
-            return jsonify({"error": "Please select a file before clicking upload."}), 400
+    elif has_file:
         try:
-            ingested = ingest_bytes(f.read(), f.filename)
+            ingested = ingest_bytes(file_bytes, filename)
         except IngestionError as e:
             return jsonify({"error": str(e)}), 400
         except Exception as e:
@@ -443,7 +461,7 @@ def get_recommendations():
         return jsonify({"error": f"Recommendation error: {e}"}), 500
 
 
-# ── Server-Sent Events helper ───────────────────────────────────────────────
+# ── Server-Sent Events 
 def make_sse(payload: dict) -> str:
     """Encode a dict as a single SSE data line followed by double newline."""
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
@@ -466,17 +484,26 @@ def process_document_stream():
     """
     # Read all request data BEFORE the generator opens
     language    = request.form.get("language", "en").strip()
+    mode        = request.form.get("mode", "").strip()
     url         = request.form.get("url", "").strip()
     file_bytes  = None
     filename    = ""
+    has_file    = False
 
-    if url:
-        pass  # ingestion done inside generator via ingest_url()
-    elif "file" in request.files:
+    if "file" in request.files:
         f = request.files["file"]
-        if f and f.filename:
-            file_bytes = f.read()
-            filename   = f.filename
+        if f and f.filename and f.filename.strip():
+            raw = f.read()
+            if len(raw) > 0:
+                file_bytes = raw
+                filename   = f.filename
+                has_file   = True
+
+    # Determine priority: file upload takes precedence if provided or mode is file
+    use_file = has_file and (mode == "file" or not url)
+    use_url  = (not use_file) and bool(url) and mode != "file"
+    if not use_file and not use_url and has_file:
+        use_file = True
 
     def generate():
         # Stage 1: Reading -- this is where actual I/O happens
@@ -484,18 +511,7 @@ def process_document_stream():
 
         ingested: IngestResult | None = None
 
-        if url:
-            try:
-                ingested = ingest_url(url)
-            except IngestionError as e:
-                yield make_sse({"type": "error", "message": str(e)})
-                return
-            except Exception as e:
-                yield make_sse({"type": "error",
-                    "message": f"Could not fetch that URL: {e}"})
-                return
-
-        elif file_bytes is not None:
+        if use_file:
             try:
                 ingested = ingest_bytes(file_bytes, filename)
             except IngestionError as e:
@@ -504,6 +520,16 @@ def process_document_stream():
             except Exception as e:
                 yield make_sse({"type": "error",
                     "message": f"Could not read the file: {e}"})
+                return
+        elif use_url:
+            try:
+                ingested = ingest_url(url)
+            except IngestionError as e:
+                yield make_sse({"type": "error", "message": str(e)})
+                return
+            except Exception as e:
+                yield make_sse({"type": "error",
+                    "message": f"Could not fetch that URL: {e}"})
                 return
         else:
             yield make_sse({"type": "error",
@@ -626,13 +652,14 @@ def job_status_stream(job_id):
 
 
 if __name__ == "__main__":
-    print("\nBhashaBridge is starting...")
-    print("   Open https://bhashabridge-roqp.onrender.com in your browser")
+    port = int(os.environ.get("PORT", 5000))
+    print("\n🌉 BhashaBridge is starting...")
+    print(f"   Local URL: http://127.0.0.1:{port}")
     print("   Press Ctrl+C to stop\n")
 
     app.run(
         host="0.0.0.0",
-        port=int(os.environ.get("PORT", 5000)),
+        port=port,
         debug=True,
         use_reloader=False
     )

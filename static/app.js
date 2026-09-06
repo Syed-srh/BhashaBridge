@@ -191,12 +191,20 @@ function setupModeTabs() {
 
       // Show the right panel
       document.querySelectorAll(".input-panel").forEach(p => p.classList.remove("active"));
-      document.getElementById(panelId).classList.add("active");
+      const targetPanel = document.getElementById(panelId);
+      if (targetPanel) targetPanel.classList.add("active");
 
-      // Reset file/url state when switching
-      selectedFile = null;
-      document.getElementById("file-info").classList.remove("visible");
-      document.getElementById("url-input").value = "";
+      // Clear the opposing mode state so inputs never collide
+      if (tab.dataset.panel === "file") {
+        const urlInput = document.getElementById("url-input");
+        if (urlInput) urlInput.value = "";
+      } else {
+        selectedFile = null;
+        const fileInput = document.getElementById("file-input");
+        if (fileInput) fileInput.value = "";
+        const fileInfo = document.getElementById("file-info");
+        if (fileInfo) fileInfo.classList.remove("visible");
+      }
       updateSubmitButton();
     });
   });
@@ -285,11 +293,33 @@ function handleFileSelected(file) {
 
   selectedFile = file;
 
+  // Immediately activate the file tab and panel
+  const fileTab = document.getElementById("tab-file");
+  if (fileTab) {
+    fileTab.classList.add("active");
+    fileTab.setAttribute("aria-selected", "true");
+  }
+  const urlTab = document.getElementById("tab-url");
+  if (urlTab) {
+    urlTab.classList.remove("active");
+    urlTab.setAttribute("aria-selected", "false");
+  }
+  const modeTabs = document.querySelector(".mode-tabs");
+  if (modeTabs) modeTabs.classList.remove("url-active");
+
+  document.querySelectorAll(".input-panel").forEach(p => p.classList.remove("active"));
+  const panelFile = document.getElementById("panel-file");
+  if (panelFile) panelFile.classList.add("active");
+
+  // Clear any residual URL input so it can never be mistakenly sent
+  const urlInput = document.getElementById("url-input");
+  if (urlInput) urlInput.value = "";
+
   // Show file name
   const nameDisplay = document.getElementById("file-name-display");
   const info = document.getElementById("file-info");
-  nameDisplay.textContent = file.name + " (" + formatFileSize(file.size) + ")";
-  info.classList.add("visible");
+  if (nameDisplay) nameDisplay.textContent = file.name + " (" + formatFileSize(file.size) + ")";
+  if (info) info.classList.add("visible");
 
   updateSubmitButton();
 }
@@ -302,9 +332,17 @@ function formatFileSize(bytes) {
 
 function updateSubmitButton() {
   const btn = document.getElementById("btn-submit");
+  const activePanelEl = document.querySelector(".input-panel.active");
+  const activePanelId = activePanelEl ? activePanelEl.id : (selectedFile ? "panel-file" : "panel-url");
+  const urlInput = document.getElementById("url-input");
+  const hasUrl = urlInput && urlInput.value.trim().length > 5;
   const hasFile = selectedFile !== null;
-  const hasUrl  = document.getElementById("url-input").value.trim().length > 5;
-  btn.disabled = !(hasFile || hasUrl);
+
+  if (activePanelId === "panel-file") {
+    btn.disabled = !hasFile;
+  } else {
+    btn.disabled = !hasUrl;
+  }
 }
 
 // Form submission
@@ -314,20 +352,31 @@ function setupFormActions() {
 }
 
 async function handleSubmit() {
-  const urlValue  = document.getElementById("url-input").value.trim();
-  const activePanel = document.querySelector(".input-panel.active").id;
+  const urlInput = document.getElementById("url-input");
+  const urlValue = urlInput ? urlInput.value.trim() : "";
+  const activePanelEl = document.querySelector(".input-panel.active");
+  const activePanelId = activePanelEl ? activePanelEl.id : (selectedFile ? "panel-file" : "panel-url");
 
   // Build form data
   const formData = new FormData();
   formData.append("language", selectedLanguageCode);
 
-  if (activePanel === "panel-url" && urlValue) {
-    formData.append("url", urlValue);
-  } else if (selectedFile) {
+  const isFileMode = (activePanelId === "panel-file") || (selectedFile && activePanelId !== "panel-url");
+
+  if (isFileMode) {
+    if (!selectedFile) {
+      showToast("Please upload a file first.");
+      return;
+    }
     formData.append("file", selectedFile);
+    formData.append("mode", "file");
   } else {
-    showToast("Please upload a file or paste a link first.");
-    return;
+    if (!urlValue) {
+      showToast("Please paste a link first.");
+      return;
+    }
+    formData.append("url", urlValue);
+    formData.append("mode", "url");
   }
 
   // Hide results, show progress (SSE events will drive step activation)
@@ -1406,12 +1455,6 @@ function initHeroParallax() {
 
     const progress = Math.min(scrollY / heroH, 1);
 
-    // Echo complex: fade and blur as complexity "dissolves" on scroll
-    if (echoComplex) {
-      echoComplex.style.opacity = Math.max(0.5 - progress * 0.35, 0.12);
-      echoComplex.style.filter  = `blur(${0.6 + progress * 3.5}px)`;
-    }
-
     // Orbs: very subtle vertical drift (parallax layer separation)
     if (orb1) orb1.style.transform = `translateY(${scrollY * 0.1}px)`;
     if (orb2) orb2.style.transform = `translateY(${scrollY * 0.07}px)`;
@@ -1567,12 +1610,6 @@ function initHeroParallax() {
     if (scrollY > heroH) return; // only in-hero
 
     const progress = Math.min(scrollY / heroH, 1);
-
-    // Echo complex: fade and blur as complexity "dissolves" on scroll
-    if (echoComplex) {
-      echoComplex.style.opacity = Math.max(0.5 - progress * 0.35, 0.12);
-      echoComplex.style.filter  = `blur(${0.6 + progress * 3.5}px)`;
-    }
 
     // Orbs: very subtle vertical drift (parallax layer separation)
     if (orb1) orb1.style.transform = `translateY(${scrollY * 0.1}px)`;
@@ -1863,12 +1900,23 @@ function renderRecommendationCards(schemes) {
   // Attach click listener to "Explain Scheme" buttons
   grid.querySelectorAll(".btn-explain-rec").forEach(btn => {
     btn.addEventListener("click", () => {
-      const url = btn.dataset.url;
+      let url = btn.dataset.url;
       if (!url) return;
+
+      if (url.includes("pmjay.gov.in")) {
+        url = "https://nha.gov.in/PM-JAY";
+      }
 
       // Activate URL tab
       const urlTab = document.getElementById("tab-url");
       if (urlTab) urlTab.click();
+
+      // Clear any uploaded file selection
+      selectedFile = null;
+      const fileInput = document.getElementById("file-input");
+      if (fileInput) fileInput.value = "";
+      const fileInfo = document.getElementById("file-info");
+      if (fileInfo) fileInfo.classList.remove("visible");
 
       // Set URL input
       const urlInput = document.getElementById("url-input");

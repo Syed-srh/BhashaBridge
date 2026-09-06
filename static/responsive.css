@@ -30,9 +30,9 @@
   }
 
   /* Scale down the transformation echo cards */
-  .hero-transform-echo { max-width: 400px; gap: var(--s3); }
-  .echo-card { max-width: 150px; min-width: 110px; padding: var(--s3) var(--s4); }
-
+  .hero-transform-echo { max-width: 580px; gap: var(--s3); }
+  .echo-card { max-width: 240px; min-width: 170px; padding: 14px 16px; }
+  .echo-legal-text, .echo-simple-desc { font-size: 10px; padding: 6px 8px; margin-bottom: 8px; }
 }
 
 /* ─── MOBILE (≤ 580px) ─── */

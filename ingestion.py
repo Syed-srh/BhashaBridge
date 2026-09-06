@@ -28,6 +28,7 @@ import unicodedata
 from dataclasses import dataclass, field
 from typing import Optional
 
+import sys
 import pdfplumber
 import pytesseract
 import requests
@@ -54,11 +55,12 @@ except ImportError:
 
 from bs4 import BeautifulSoup
 
-# ── Tesseract path (Windows) ─────────────────────────────────────────────────
-pytesseract.pytesseract.tesseract_cmd = os.getenv(
-    "TESSERACT_PATH",
-    r"C:\Program Files\Tesseract-OCR\tesseract.exe",
-)
+# ── Tesseract path configuration ─────────────────────────────────────────────
+tess_path = os.getenv("TESSERACT_PATH")
+if tess_path:
+    pytesseract.pytesseract.tesseract_cmd = tess_path
+elif sys.platform == "win32" and os.path.exists(r"C:\Program Files\Tesseract-OCR\tesseract.exe"):
+    pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
 # Tesseract language pack: covers most Indian languages with standard tessdata.
 # Tesseract silently skips any lang code whose .traineddata file is absent.
@@ -292,9 +294,57 @@ _BOILERPLATE_PATTERN = re.compile(
 )
 
 
+def _get_curated_scheme_fallback(url: str) -> Optional[IngestResult]:
+    """Fallback to curated knowledge base if portal is down or JavaScript-rendered."""
+    try:
+        from urllib.parse import urlparse
+        from recommendation_engine import CURATED_SCHEMES
+
+        target = url.lower().strip()
+        target_parsed = urlparse(target)
+        target_host = target_parsed.netloc.replace("www.", "")
+
+        for s in CURATED_SCHEMES:
+            s_url = s.get("official_url", "").lower()
+            s_id = s.get("id", "").lower()
+            s_host = urlparse(s_url).netloc.replace("www.", "")
+
+            # Match by domain host
+            matched = False
+            if target_host and s_host and (target_host == s_host or target_host in s_host or s_host in target_host):
+                matched = True
+            elif s_id and s_id in target:
+                matched = True
+            elif "pmjay" in target and ("ayushman" in s_id or "pmjay" in s_id):
+                matched = True
+
+            if matched:
+                text = (
+                    f"Scheme Name: {s['scheme_name']}\n"
+                    f"Category: {s['category']}\n"
+                    f"Summary: {s['summary']}\n"
+                    f"Eligibility: {s['eligibility']}\n"
+                    f"Benefits: {s['benefits']}\n"
+                    f"Documents Required: {s['documents_required']}\n"
+                    f"Application Process: {s['application_process']}\n"
+                    f"Restrictions: {s['restrictions']}"
+                )
+                return IngestResult(
+                    text=text.strip(),
+                    source_type="url",
+                    page_count=1,
+                    detected_language="en",
+                    metadata={"url": url, "extractor": "curated_knowledge_base_fallback"},
+                )
+    except Exception:
+        pass
+    return None
+
+
 def _ingest_url(url: str) -> IngestResult:
     """
-    Two-strategy URL extraction.
+    Two-strategy URL extraction with smart domain normalization and
+    knowledge base fallback for government schemes with unreachable portals.
 
     Strategy 1: trafilatura (if installed)
       Purpose-built article extractor; handles complex layouts well.
@@ -303,12 +353,21 @@ def _ingest_url(url: str) -> IngestResult:
       Strips noise tags and boilerplate containers, keeps lines > 20 chars,
       limits to 700 lines.
     """
+    fetch_url = url.strip()
+    # Normalize known unreachable / deprecated portal domains to active working endpoints
+    if "pmjay.gov.in" in fetch_url.lower():
+        fetch_url = "https://nha.gov.in/PM-JAY"
+
     try:
-        resp = requests.get(url, headers=_HTTP_HEADERS, timeout=25)
+        resp = requests.get(fetch_url, headers=_HTTP_HEADERS, timeout=15)
         resp.raise_for_status()
     except requests.RequestException as exc:
+        fallback = _get_curated_scheme_fallback(url)
+        if fallback:
+            return fallback
+
         raise IngestionError(
-            f"Could not fetch '{url}'. Check the URL and try again. ({exc})"
+            f"Could not connect to '{url}'. The government portal may be temporarily unavailable or timing out. Please try uploading a PDF or screenshot of the scheme instead."
         ) from exc
 
     html = resp.text
@@ -355,10 +414,14 @@ def _ingest_url(url: str) -> IngestResult:
     lines = [ln.strip() for ln in raw_text.splitlines() if len(ln.strip()) > 20]
     text = _normalise("\n".join(lines[:700]))
 
-    if not text:
+    if not text or len(text.strip()) < 50:
+        fallback = _get_curated_scheme_fallback(url)
+        if fallback:
+            return fallback
         raise IngestionError(
             "Could not extract any meaningful text from that URL. "
-            "The page may require login or be JavaScript-rendered."
+            "The page may require login or be JavaScript-rendered. "
+            "Please try uploading a document or screenshot instead."
         )
 
     return IngestResult(
@@ -399,7 +462,7 @@ def _ocr_image(img: Image.Image) -> str:
     for lang_str in (_TESS_LANGS, "eng+hin", "eng"):
         try:
             return pytesseract.image_to_string(img, lang=lang_str)
-        except pytesseract.TesseractError:
+        except (pytesseract.TesseractError, pytesseract.TesseractNotFoundError, FileNotFoundError):
             continue
     return ""
 

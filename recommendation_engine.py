@@ -64,7 +64,7 @@ CURATED_SCHEMES = [
         "scheme_name": "Ayushman Bharat PM-JAY",
         "category": "Healthcare & Medical",
         "icon": "🏥",
-        "official_url": "https://pmjay.gov.in/",
+        "official_url": "https://nha.gov.in/PM-JAY",
         "summary": "World's largest government-funded healthcare scheme providing health coverage of ₹5 lakh per family per year for secondary and tertiary hospitalization.",
         "eligibility": "Low-income families identified under SECC 2011 data, unorganized workers, landless laborers, and senior citizens aged 70+.",
         "benefits": "Cashless health cover up to ₹5,000,000 per family per year covering pre and post hospitalization expenses across empanelled hospitals.",
@@ -258,30 +258,26 @@ def init_db():
         )
     """)
 
-    # Seed curated schemes if empty
-    cursor = conn.execute("SELECT COUNT(*) FROM schemes")
-    count = cursor.fetchone()[0]
-
-    if count == 0:
-        log.info("Seeding Knowledge Base with %d curated schemes...", len(CURATED_SCHEMES))
-        for s in CURATED_SCHEMES:
-            stext = _build_scheme_search_text(s)
-            conn.execute(
-                """
-                INSERT INTO schemes
-                  (id, scheme_name, category, icon, official_url, summary,
-                   eligibility, benefits, documents_required, application_process,
-                   restrictions, target_profile, search_text)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    s["id"], s["scheme_name"], s["category"], s["icon"],
-                    s["official_url"], s["summary"], s["eligibility"], s["benefits"],
-                    s["documents_required"], s["application_process"],
-                    s["restrictions"], s["target_profile"], stext
-                )
+    # Upsert curated schemes into local DB
+    log.info("Synchronizing Knowledge Base with %d curated schemes...", len(CURATED_SCHEMES))
+    for s in CURATED_SCHEMES:
+        stext = _build_scheme_search_text(s)
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO schemes
+              (id, scheme_name, category, icon, official_url, summary,
+               eligibility, benefits, documents_required, application_process,
+               restrictions, target_profile, search_text)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                s["id"], s["scheme_name"], s["category"], s["icon"],
+                s["official_url"], s["summary"], s["eligibility"], s["benefits"],
+                s["documents_required"], s["application_process"],
+                s["restrictions"], s["target_profile"], stext
             )
-        conn.commit()
+        )
+    conn.commit()
 
     # Load all schemes into memory for fast vector similarity search
     conn.row_factory = sqlite3.Row
