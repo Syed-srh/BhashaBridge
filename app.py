@@ -108,6 +108,18 @@ def init_db():
             created_at TEXT DEFAULT (datetime('now', 'localtime'))
         )
     """)
+    # Alias table used in the feedback POST handler (duplicate of feedback_logs)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS feedback (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            result_id TEXT,
+            stage TEXT,
+            rating TEXT,
+            comment TEXT,
+            language TEXT,
+            created_at TEXT DEFAULT (datetime('now', 'localtime'))
+        )
+    """)
     conn.commit()
     conn.close()
 

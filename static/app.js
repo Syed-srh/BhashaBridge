@@ -387,7 +387,7 @@ async function handleSubmit() {
   const previewWrap = document.getElementById("progress-preview-wrap");
   if (previewWrap) {
     previewWrap.innerHTML = "";
-    if (activePanel === "panel-url" && urlValue) {
+    if (activePanelId === "panel-url" && urlValue) {
       previewWrap.innerHTML = `
         <div style="text-align: center; color: var(--text-secondary); opacity: 0.45; transform: scale(1.05);">
           <i class="fa-solid fa-globe" style="font-size: 5rem; margin-bottom: var(--s4); color: var(--blue)"></i>
@@ -489,8 +489,13 @@ async function handleSubmit() {
     }
 
   } catch (err) {
+    console.error("[BhashaBridge] Submit error:", err);
     hideProgress();
-    showToast(err.message);
+    // Show a human-readable message when the server is simply not running
+    const msg = (err.message && err.message.toLowerCase().includes("fetch"))
+      ? "Could not reach the server. Make sure the backend is running (python app.py)."
+      : (err.message || "Something went wrong. Please try again.");
+    showToast(msg);
   } finally {
     btn.classList.remove("processing", "success");
     btn.disabled = false;
