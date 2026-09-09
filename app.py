@@ -236,7 +236,9 @@ def process_document():
 
     source_name = ingested.metadata.get("url") or ingested.metadata.get("filename") or ""
 
+    conn = None
     try:
+        os.makedirs("db", exist_ok=True)
         conn = sqlite3.connect(DB_PATH)
         conn.execute(
             """
@@ -254,10 +256,14 @@ def process_document():
             ),
         )
         conn.commit()
-    except Exception:
-        pass
+    except Exception as e:
+        app.logger.warning(f"Database write failed: {e}")
     finally:
-        conn.close()
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
     action_guide = build_action_guide(
         result.get("documents", ""),
@@ -572,7 +578,12 @@ def process_document_stream():
         # Stage 4: Preparing
         yield make_sse({"stage": "Preparing your explanation", "step": 3})
 
+        import uuid
+        job_id = f"job-{uuid.uuid4().hex[:12]}"
+
+        conn = None
         try:
+            os.makedirs("db", exist_ok=True)
             conn = sqlite3.connect(DB_PATH)
             conn.execute(
                 """
@@ -589,8 +600,6 @@ def process_document_stream():
                     result.get("how_to_apply",     ""),
                 ),
             )
-            import uuid
-            job_id = f"job-{uuid.uuid4().hex[:12]}"
             conn.execute(
                 """
                 INSERT INTO previously_explained
@@ -610,10 +619,14 @@ def process_document_stream():
                 )
             )
             conn.commit()
-        except Exception:
-            pass
+        except Exception as e:
+            app.logger.warning(f"Database write failed: {e}")
         finally:
-            conn.close()
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
         action_guide = build_action_guide(
             result.get("documents", ""),

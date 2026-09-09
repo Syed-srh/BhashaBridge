@@ -66,6 +66,14 @@ elif sys.platform == "win32" and os.path.exists(r"C:\Program Files\Tesseract-OCR
 # Tesseract silently skips any lang code whose .traineddata file is absent.
 _TESS_LANGS = "eng+hin+ben+tam+tel+kan+mal+mar+guj+pan+ori+asm"
 
+def is_tesseract_installed() -> bool:
+    """Check whether Tesseract binary is callable in the current environment."""
+    try:
+        pytesseract.get_tesseract_version()
+        return True
+    except Exception:
+        return False
+
 log = logging.getLogger(__name__)
 
 # ── Result dataclass ─────────────────────────────────────────────────────────
@@ -249,6 +257,12 @@ def _ingest_image(file_bytes: bytes, filename: str) -> IngestResult:
         img = img.resize(
             (int(img.width * scale), int(img.height * scale)),
             Image.LANCZOS,
+        )
+
+    if not is_tesseract_installed():
+        raise IngestionError(
+            "Image OCR requires Tesseract OCR, which is not installed on this server environment. "
+            "Please upload a PDF with selectable text or paste a website link instead."
         )
 
     img_grey = img.convert("L")
