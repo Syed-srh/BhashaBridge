@@ -259,16 +259,24 @@ def _ingest_image(file_bytes: bytes, filename: str) -> IngestResult:
             Image.LANCZOS,
         )
 
-    if not is_tesseract_installed():
-        raise IngestionError(
-            "Image OCR requires Tesseract OCR, which is not installed on this server environment. "
-            "Please upload a PDF with selectable text or paste a website link instead."
-        )
+    ocr_text = ""
+    if is_tesseract_installed():
+        img_grey = img.convert("L")
+        ocr_text = _normalise(_ocr_image(img_grey))
 
-    img_grey = img.convert("L")
-    ocr_text = _normalise(_ocr_image(img_grey))
+    # Fallback to Gemini Vision if Tesseract failed or is not installed
+    if not ocr_text:
+        gemini_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        if gemini_key:
+            log.info("Using Gemini Vision OCR fallback for image...")
+            ocr_text = _normalise(_gemini_ocr_image(file_bytes))
 
     if not ocr_text:
+        if not is_tesseract_installed() and not (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")):
+            raise IngestionError(
+                "Image OCR requires Tesseract OCR or GEMINI_API_KEY. "
+                "Please add GEMINI_API_KEY to your .env file or upload a text PDF."
+            )
         raise IngestionError(
             "We could not read any text from this image. "
             "Please try a clearer photo with the text well-lit and in focus."
@@ -479,6 +487,43 @@ def _ocr_image(img: Image.Image) -> str:
         except (pytesseract.TesseractError, pytesseract.TesseractNotFoundError, FileNotFoundError):
             continue
     return ""
+
+
+def _gemini_ocr_image(file_bytes: bytes) -> str:
+    """Extract text from image using Gemini Vision when Tesseract is unavailable."""
+    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    if not api_key:
+        return ""
+    import base64
+    b64 = base64.b64encode(file_bytes).decode("utf-8")
+
+    for model in ["gemini-2.5-flash", "gemini-1.5-flash"]:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+        payload = {
+            "contents": [{
+                "parts": [
+                    {"text": "Extract all text verbatim from this document image. Do not summarize, format or add notes, simply output the complete readable text from the document."},
+                    {
+                        "inline_data": {
+                            "mime_type": "image/jpeg",
+                            "data": b64
+                        }
+                    }
+                ]
+            }]
+        }
+        try:
+            r = requests.post(url, json=payload, timeout=30)
+            if r.status_code == 200:
+                res = r.json()
+                text = res["candidates"][0]["content"]["parts"][0]["text"].strip()
+                if text:
+                    log.info("Gemini Vision OCR successfully extracted %d chars using %s", len(text), model)
+                    return text
+        except Exception as e:
+            log.warning("Gemini Vision model %s failed: %s", model, e)
+    return ""
+
 
 
 # ── Language detection ────────────────────────────────────────────────────────

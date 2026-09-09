@@ -37,6 +37,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import textwrap
 from typing import Any
 
@@ -55,9 +56,62 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ── Config 
 def get_api_key() -> str:
     return os.getenv("GROQ_API_KEY", "")
+
+def get_gemini_api_key() -> str:
+    return os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or ""
+
+def _call_gemini(
+    system: str,
+    user: str,
+    temperature: float = 0.2,
+    max_tokens: int = 3000,
+) -> dict:
+    """Call Google Gemini API as an automatic fallback when Groq is rate-limited or down."""
+    api_key = get_gemini_api_key()
+    if not api_key:
+        raise ValueError("GEMINI_API_KEY is not set.")
+
+    import requests
+
+    models_to_try = ["gemini-2.5-flash", "gemini-1.5-flash"]
+    last_err = None
+
+    for model in models_to_try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+        payload = {
+            "system_instruction": {
+                "parts": [{"text": system}]
+            },
+            "contents": [
+                {
+                    "parts": [{"text": user}]
+                }
+            ],
+            "generationConfig": {
+                "temperature": temperature,
+                "maxOutputTokens": max_tokens,
+                "responseMimeType": "application/json",
+            }
+        }
+
+        try:
+            resp = requests.post(url, json=payload, timeout=45)
+            if resp.status_code != 200:
+                raise RuntimeError(f"Gemini HTTP {resp.status_code}: {resp.text}")
+
+            data = resp.json()
+            raw = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+            parsed = json.loads(raw)
+            log.info("  [Gemini Fallback] model=%s SUCCESS", model)
+            return parsed
+        except Exception as exc:
+            log.warning("  [Gemini Fallback] model=%s failed: %s", model, exc)
+            last_err = exc
+            continue
+
+    raise RuntimeError(f"Google Gemini fallback failed. Last error: {last_err}")
 
 # Preferred model; fallback list tried in order on model_not_found / API error.
 # Run  python -c "from groq import Groq; [print(m.id) for m in Groq().models.list().data]"
@@ -118,7 +172,7 @@ _SCHEMA_KEYS     = [
 def _call_llm(
     system: str,
     user: str,
-    client: Groq,
+    client: Groq | None,
     temperature: float = 0.2,
     max_tokens: int = 2500,
 ) -> dict:
@@ -131,62 +185,79 @@ def _call_llm(
     tried = []
     last_err = None
 
-    for model in dict.fromkeys(_FALLBACK_MODELS):   # dedup, preserve order
-        try:
-            resp = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user",   "content": user},
-                ],
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
-            raw = (resp.choices[0].message.content or "").strip()
-
-            if not raw:
-                raise ValueError("Received empty content from LLM.")
-
-            # Strip markdown code fences if present
-            if "```" in raw:
-                # Extract content inside markdown code block if present
-                fence_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, re.DOTALL)
-                if fence_match:
-                    raw = fence_match.group(1).strip()
-                else:
-                    # Generic code block strip
-                    lines = [ln for ln in raw.splitlines() if not ln.strip().startswith("```")]
-                    raw = "\n".join(lines).strip()
-
-            # Attempt direct parse
+    if client is not None:
+        for model in dict.fromkeys(_FALLBACK_MODELS):   # dedup, preserve order
             try:
-                parsed = json.loads(raw)
-            except json.JSONDecodeError:
-                # Fallback: find outer-most JSON braces { ... }
-                first_brace = raw.find("{")
-                last_brace = raw.rfind("}")
-                if first_brace != -1 and last_brace > first_brace:
-                    json_str = raw[first_brace:last_brace + 1]
-                    parsed = json.loads(json_str)
-                else:
-                    raise
+                resp = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": system},
+                        {"role": "user",   "content": user},
+                    ],
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+                raw = (resp.choices[0].message.content or "").strip()
 
-            log.info(
-                "  [LLM] model=%s tokens_in≈%d tokens_out≈%d",
-                model,
-                len(system.split()) + len(user.split()),
-                len(raw.split())
-            )
-            return parsed
+                if not raw:
+                    raise ValueError("Received empty content from LLM.")
 
-        except Exception as exc:
-            log.warning("  [LLM] model=%s failed (error: %s)", model, exc)
-            tried.append(model)
-            last_err = exc
-            continue
+                # Strip markdown code fences if present
+                if "```" in raw:
+                    # Extract content inside markdown code block if present
+                    fence_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, re.DOTALL)
+                    if fence_match:
+                        raw = fence_match.group(1).strip()
+                    else:
+                        # Generic code block strip
+                        lines = [ln for ln in raw.splitlines() if not ln.strip().startswith("```")]
+                        raw = "\n".join(lines).strip()
 
+                # Attempt direct parse
+                try:
+                    parsed = json.loads(raw)
+                except json.JSONDecodeError:
+                    # Fallback: find outer-most JSON braces { ... }
+                    first_brace = raw.find("{")
+                    last_brace = raw.rfind("}")
+                    if first_brace != -1 and last_brace > first_brace:
+                        json_str = raw[first_brace:last_brace + 1]
+                        parsed = json.loads(json_str)
+                    else:
+                        raise
+
+                log.info(
+                    "  [LLM] model=%s tokens_in≈%d tokens_out≈%d",
+                    model,
+                    len(system.split()) + len(user.split()),
+                    len(raw.split())
+                )
+                return parsed
+
+            except Exception as exc:
+                log.warning("  [LLM] model=%s failed (error: %s)", model, exc)
+                tried.append(model)
+                last_err = exc
+                continue
+
+    # ── Automatic Failover to Google Gemini ──
+    gemini_key = get_gemini_api_key()
+    if gemini_key:
+        log.info("  [FAILOVER] Groq unavailable or exhausted. Engaging Google Gemini fallback...")
+        try:
+            return _call_gemini(system, user, temperature=temperature, max_tokens=max_tokens)
+        except Exception as g_exc:
+            log.error("  [FAILOVER] Google Gemini fallback failed: %s", g_exc)
+            if tried:
+                raise RuntimeError(
+                    f"Groq models ({', '.join(tried)}) failed ({last_err}), and Google Gemini fallback failed ({g_exc})."
+                )
+            raise g_exc
+
+    tried_str = ", ".join(tried) if tried else "none (no Groq client)"
     raise RuntimeError(
-        f"All LLM models ({', '.join(tried)}) failed. Last error: {last_err}"
+        f"All LLM models ({tried_str}) failed. Last error: {last_err}. "
+        "Tip: Add GEMINI_API_KEY to your .env to enable automatic failover!"
     )
 
 
@@ -255,10 +326,15 @@ def extract_structured_fields(
                     documents_required, application_process, restrictions
     """
     api_key = get_api_key()
-    if not api_key and client is None:
-        raise ValueError("GROQ_API_KEY is not set. Add it to your .env file.")
+    gemini_key = get_gemini_api_key()
+    if not api_key and not gemini_key and client is None:
+        raise ValueError("Neither GROQ_API_KEY nor GEMINI_API_KEY is set. Add one to your .env file.")
 
-    client = client or Groq(api_key=api_key)
+    if client is None and api_key:
+        try:
+            client = Groq(api_key=api_key)
+        except Exception:
+            client = None
 
     log.info("[Step 1] extract_structured_fields — input chars: %d", len(text))
 
@@ -340,7 +416,11 @@ def simplify(
     -------
     dict with same seven keys, rewritten at Class-5 reading level.
     """
-    client = client or Groq(api_key=get_api_key())
+    if client is None and get_api_key():
+        try:
+            client = Groq(api_key=get_api_key())
+        except Exception:
+            client = None
 
     log.info(
         "[Step 2] simplify — scheme=%r  input_total_len=%d",
@@ -427,7 +507,8 @@ def translate(
         log.info("[Step 3] translate — target is English; skipping translation.")
         return simplified_fields
 
-    client = client or Groq(api_key=get_api_key())
+    api_key = get_api_key()
+    client = client or (Groq(api_key=api_key) if api_key else None)
 
     log.info(
         "[Step 3] translate — target=%s (%s)  input_total_len=%d",
@@ -474,10 +555,11 @@ def run_pipeline(
       scheme_name, pipeline_stages
     """
     api_key = get_api_key()
-    if not api_key:
-        raise ValueError("GROQ_API_KEY is not set. Add it to your .env file.")
+    gemini_key = get_gemini_api_key()
+    if not api_key and not gemini_key:
+        raise ValueError("Neither GROQ_API_KEY nor GEMINI_API_KEY is set. Add one to your .env file.")
 
-    client = Groq(api_key=api_key)
+    client = Groq(api_key=api_key) if api_key else None
 
     log.info("=" * 60)
     log.info("BhashaBridge pipeline START — target_lang=%s  input_chars=%d",
