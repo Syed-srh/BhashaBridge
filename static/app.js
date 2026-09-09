@@ -28,7 +28,65 @@ document.addEventListener("DOMContentLoaded", () => {
   setupResultButtons();
   initDiscoverSection();
   setupSpeechToText();
+  initFlowNav();
 });
+
+// ─── FLOW NAV — step indicator (visual only, no logic) ───
+// Marks the 4-step progress indicator based on scroll position
+// and user interaction state.
+function initFlowNav() {
+  const steps = {
+    discover: document.getElementById('fnav-discover'),
+    upload:   document.getElementById('fnav-upload'),
+    language: document.getElementById('fnav-language'),
+    results:  document.getElementById('fnav-results'),
+  };
+
+  const sections = {
+    discover: document.getElementById('discover-section'),
+    upload:   document.querySelector('.input-section'),
+    language: document.querySelector('.language-section'),
+    results:  document.getElementById('results-section'),
+  };
+
+  if (!steps.discover) return;
+
+  // Activate step 1 (Discover) immediately — user starts here
+  setFlowStep('discover', 'active', steps);
+
+  // Use IntersectionObserver to track which section is in view
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (!entry.isIntersecting) return;
+      const id = entry.target.id || entry.target.className;
+      if (id === 'discover-section') {
+        setFlowStep('discover', 'active', steps);
+      } else if (entry.target.classList.contains('input-section')) {
+        setFlowStep('discover', 'done', steps);
+        setFlowStep('upload', 'active', steps);
+      } else if (entry.target.classList.contains('language-section')) {
+        setFlowStep('upload', 'active', steps);
+        setFlowStep('language', 'active', steps);
+      } else if (id === 'results-section') {
+        setFlowStep('upload', 'done', steps);
+        setFlowStep('language', 'done', steps);
+        setFlowStep('results', 'active', steps);
+      }
+    });
+  }, { rootMargin: '-20% 0px -20% 0px', threshold: 0 });
+
+  Object.values(sections).forEach(el => { if (el) observer.observe(el); });
+
+  // Expose helper so other parts of app.js can call it
+  window.updateFlowStep = function(key, state) { setFlowStep(key, state, steps); };
+}
+
+function setFlowStep(key, state, steps) {
+  const el = steps[key];
+  if (!el) return;
+  el.classList.remove('active', 'done');
+  if (state === 'active' || state === 'done') el.classList.add(state);
+}
 
 // Language picker
 

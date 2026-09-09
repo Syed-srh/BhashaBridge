@@ -30,138 +30,154 @@
 </head>
 <body>
 
+  <!-- ─── PERSISTENT FLOW INDICATOR ─── -->
+  <!-- Pure CSS — tracks user position in the 4-step document flow -->
+  <nav class="flow-nav" aria-label="Your progress" id="flow-nav">
+    <div class="flow-nav-inner">
+      <div class="flow-step" id="fnav-discover">
+        <span class="flow-step-num">1</span>
+        <span class="flow-step-label">Discover</span>
+      </div>
+      <div class="flow-connector" aria-hidden="true"></div>
+      <div class="flow-step" id="fnav-upload">
+        <span class="flow-step-num">2</span>
+        <span class="flow-step-label">Upload</span>
+      </div>
+      <div class="flow-connector" aria-hidden="true"></div>
+      <div class="flow-step" id="fnav-language">
+        <span class="flow-step-num">3</span>
+        <span class="flow-step-label">Language</span>
+      </div>
+      <div class="flow-connector" aria-hidden="true"></div>
+      <div class="flow-step" id="fnav-results">
+        <span class="flow-step-num">4</span>
+        <span class="flow-step-label">Results</span>
+      </div>
+    </div>
+  </nav>
+  <!-- /PERSISTENT FLOW INDICATOR -->
+
   <!--
        HERO WRAPPER — full-bleed atmospheric section
       -->
   <div class="hero-wrapper" id="hero-wrapper">
-
-    <!-- Decorative: subtle grain/noise texture overlay -->
-    <div class="hero-grain" aria-hidden="true"></div>
-
-    <!-- Decorative: ambient glow orbs — CSS only, no canvas, hidden on mobile -->
-    <div class="hero-orbs" aria-hidden="true">
-      <div class="orb orb-1"></div>
-      <div class="orb orb-2"></div>
-      <div class="orb orb-3"></div>
-    </div>
-
-    <!-- Decorative: floating Indian-language characters — desktop only -->
-    <div class="hero-lang-chars" aria-hidden="true">
-      <span class="lang-char lc-1" style="font-family:'Noto Sans Devanagari',sans-serif">भ</span>
-      <span class="lang-char lc-2" style="font-family:'Noto Sans Tamil',sans-serif">த</span>
-      <span class="lang-char lc-3" style="font-family:'Noto Sans Bengali',sans-serif">বা</span>
-      <span class="lang-char lc-4" style="font-family:'Noto Sans Gurmukhi',sans-serif">ਭ</span>
-      <span class="lang-char lc-5" style="font-family:'Noto Sans Malayalam',sans-serif">ഭ</span>
-      <span class="lang-char lc-6" style="font-family:'Noto Sans Telugu',sans-serif">భ</span>
-      <span class="lang-char lc-7" style="font-family:'Noto Sans Gujarati',sans-serif">ભ</span>
-      <span class="lang-char lc-8" style="font-family:'Noto Sans Kannada',sans-serif">ಭ</span>
-    </div>
 
     <!-- HEADER -->
     <header>
       <div class="site-header">
         <div class="container">
 
-          <!-- Logo -->
-          <div class="logo">
-            <div class="logo-icon">
-              <img src="/static/images/BhashaBridge Logo.png" alt="BhashaBridge Logo" width="48" height="48" />
-            </div>
-            <div class="logo-text">
-              <span class="logo-name">BhashaBridge</span>
-              <span class="logo-tagline">Breaking language barriers in welfare</span>
-            </div>
-          </div>
+          <!-- Asymmetric hero grid: text-left | echo-right -->
+          <div class="hero-grid">
 
-          <!-- Hero headline -->
-          <h1>Government schemes,<br /><em>explained simply.</em></h1>
+            <!-- LEFT COLUMN: brand + copy -->
+            <div class="hero-col-text">
 
-          <p class="hero-sub">
-            Upload a scheme document, paste a link, or take a photo —
-            we'll extract what matters and explain it in your language.
-            No jargon. No confusion.
-          </p>
-
-          <!--
-            Transformation echo — lightweight visual hint of the core metaphor.
-            Two floating cards: dense government text → clean plain-language card.
-            This is an ECHO only; the full signature moment comes in Phase 4.
-            Hidden on mobile (aria-hidden keeps it purely decorative).
-          -->
-          <div class="hero-transform-echo" aria-hidden="true">
-            <!-- Realistic Government Gazette / Legal Clause Card -->
-            <div class="echo-card echo-complex">
-              <div class="echo-card-badge complex">
-                <i class="fa-solid fa-file-contract"></i> Official Gazette
+              <!-- Logo -->
+              <div class="logo">
+                <div class="logo-icon">
+                  <img src="/static/images/BhashaBridge Logo.png" alt="BhashaBridge Logo" width="40" height="40" />
+                </div>
+                <div class="logo-text">
+                  <span class="logo-name">BhashaBridge</span>
+                </div>
               </div>
-              <div class="echo-label">Section 4(2)(b)(iii) — Proviso</div>
-              <p class="echo-legal-text">
-                “Provided that notwithstanding anything in clause (a), a household satisfying deprivation criteria D1–D5 under SECC-2011 shall submit verification under Form-VII...”
+
+              <!-- Eyebrow -->
+              <p class="hero-eyebrow">Government welfare, made clear</p>
+
+              <!-- Hero headline — one dominant element -->
+              <h1>Government<br />schemes,<br /><em>explained simply.</em></h1>
+
+              <p class="hero-sub">
+                Upload a scheme document, paste a link, or take a photo —
+                we'll explain what it means, who qualifies, and how to apply.
+                In your language. No jargon.
               </p>
-              <div class="echo-card-footer">
-                <span class="echo-status-tag complex">
-                  <i class="fa-solid fa-triangle-exclamation"></i> Dense Jargon
-                </span>
-                <span class="echo-doc-meta">MoRD Notification</span>
-              </div>
-            </div>
 
-            <!-- Bridge Arrow with AI Simplified Badge -->
-            <div class="echo-bridge-arrow" aria-hidden="true">
-              <span class="echo-bridge-pill">
-                <i class="fa-solid fa-arrow-right"></i>
-              </span>
-              <span class="echo-bridge-text">AI Bridge</span>
-            </div>
+              <!-- Stat strip — left-anchored, factual, no gradient -->
+              <div class="stats-bar" role="list" aria-label="Key statistics">
 
-            <!-- Clean, Actionable Plain-Language Outcome Card -->
-            <div class="echo-card echo-simple">
-              <div class="echo-card-badge simple">
-                <i class="fa-solid fa-wand-magic-sparkles"></i> Plain Language
+                <div class="stat" role="listitem">
+                  <span class="stat-number" data-target="22" data-suffix="+" aria-label="22 plus Indian languages">22+</span>
+                  <span class="stat-label">Indian Languages</span>
+                </div>
+
+                <div class="stat-divider" aria-hidden="true"></div>
+
+                <div class="stat" role="listitem">
+                  <span class="stat-number" data-target="20000" data-suffix="+" aria-label="20 thousand plus welfare schemes">20K+</span>
+                  <span class="stat-label">Welfare Schemes</span>
+                </div>
+
+                <div class="stat-divider" aria-hidden="true"></div>
+
+                <div class="stat" role="listitem">
+                  <span class="stat-number stat-static" aria-label="Free, always">Free</span>
+                  <span class="stat-label">Always</span>
+                </div>
+
               </div>
-              <div class="echo-simple-highlight">
-                <span class="echo-simple-check"><i class="fa-solid fa-circle-check"></i></span>
-                <strong>You qualify for this scheme.</strong>
-              </div>
-              <p class="echo-simple-desc">
-                Get ₹5 Lakh annual cashless healthcare. Visit any empanelled hospital with your Aadhaar card before the 30th.
-              </p>
-              <div class="echo-card-footer">
-                <span class="echo-status-tag simple">
-                  <i class="fa-solid fa-check"></i> Clear & Actionable
-                </span>
-                <span class="echo-doc-meta simple">100% Verified</span>
+              <!-- /stats-bar -->
+
+            </div>
+            <!-- /hero-col-text -->
+
+            <!-- RIGHT COLUMN: transformation echo —
+                 Shows dense gov text → plain language outcome.
+                 aria-hidden: purely illustrative, not interactive. -->
+            <div class="hero-col-visual" aria-hidden="true">
+              <div class="hero-transform-echo">
+                <!-- Government Gazette Card -->
+                <div class="echo-card echo-complex">
+                  <div class="echo-card-badge complex">
+                    <i class="fa-solid fa-file-contract"></i> Official Gazette
+                  </div>
+                  <div class="echo-label">Section 4(2)(b)(iii) — Proviso</div>
+                  <p class="echo-legal-text">
+                    "Provided that notwithstanding anything in clause (a), a household satisfying deprivation criteria D1–D5 under SECC-2011 shall submit verification under Form-VII..."
+                  </p>
+                  <div class="echo-card-footer">
+                    <span class="echo-status-tag complex">
+                      <i class="fa-solid fa-triangle-exclamation"></i> Dense Jargon
+                    </span>
+                    <span class="echo-doc-meta">MoRD Notification</span>
+                  </div>
+                </div>
+
+                <!-- Bridge Arrow -->
+                <div class="echo-bridge-arrow">
+                  <span class="echo-bridge-pill">
+                    <i class="fa-solid fa-arrow-down"></i>
+                  </span>
+                  <span class="echo-bridge-text">BhashaBridge</span>
+                </div>
+
+                <!-- Plain Language Outcome Card -->
+                <div class="echo-card echo-simple">
+                  <div class="echo-card-badge simple">
+                    <i class="fa-solid fa-check"></i> Plain Language
+                  </div>
+                  <div class="echo-simple-highlight">
+                    <span class="echo-simple-check"><i class="fa-solid fa-circle-check"></i></span>
+                    <strong>You qualify for this scheme.</strong>
+                  </div>
+                  <p class="echo-simple-desc">
+                    Get ₹5 Lakh annual cashless healthcare. Visit any empanelled hospital with your Aadhaar card before the 30th.
+                  </p>
+                  <div class="echo-card-footer">
+                    <span class="echo-status-tag simple">
+                      <i class="fa-solid fa-check"></i> Clear &amp; Actionable
+                    </span>
+                    <span class="echo-doc-meta simple">100% Verified</span>
+                  </div>
+                </div>
               </div>
             </div>
+            <!-- /hero-col-visual -->
+
           </div>
-
-          <!-- Stats bar — count-up on scroll, hover reveals supporting line -->
-          <div class="stats-bar" role="list" aria-label="Key statistics">
-
-            <div class="stat" role="listitem">
-              <span class="stat-number" data-target="22" data-suffix="+" aria-label="22 plus Indian languages">22+</span>
-              <span class="stat-label">Indian Languages</span>
-              <span class="stat-hover-line" aria-hidden="true">One platform. Many voices.</span>
-            </div>
-
-            <div class="stat-divider" aria-hidden="true"></div>
-
-            <div class="stat" role="listitem">
-              <span class="stat-number" data-target="20000" data-suffix="+" aria-label="20 thousand plus welfare schemes">20K+</span>
-              <span class="stat-label">Welfare Schemes</span>
-              <span class="stat-hover-line" aria-hidden="true">Thousands of opportunities, hidden behind complicated documents.</span>
-            </div>
-
-            <div class="stat-divider" aria-hidden="true"></div>
-
-            <div class="stat" role="listitem">
-              <span class="stat-number stat-static" aria-label="Free, always">Free</span>
-              <span class="stat-label">Always</span>
-              <span class="stat-hover-line" aria-hidden="true">Every Indian deserves access, regardless of means.</span>
-            </div>
-
-          </div>
-          <!-- /stats-bar -->
+          <!-- /hero-grid -->
 
         </div>
       </div>
@@ -298,34 +314,49 @@
        -->
   <section class="features-section" id="features-section" aria-labelledby="features-heading">
     <div class="container">
+
+      <!-- Section header: left-aligned with eyebrow, not centered -->
       <header class="section-intro" data-reveal>
-        <h2 id="features-heading">Why BhashaBridge</h2>
-        <p>Built for the people who need government schemes the most.</p>
+        <p class="section-eyebrow">Why BhashaBridge</p>
+        <h2 id="features-heading">Built for people,<br />not paperwork.</h2>
       </header>
+
+      <!-- Varied layout: full-width first, then 2-col, then full-width strip -->
       <div class="features-grid" role="list">
 
-        <div class="feature-card" role="listitem" data-reveal>
-          <div class="feature-icon-wrap" aria-hidden="true"><i class="fa-solid fa-lightbulb"></i></div>
-          <h3 class="feature-title">Understand</h3>
-          <p class="feature-desc">No bureaucratic jargon. Clear answers to what the scheme is, who qualifies, and exactly how to apply.</p>
+        <!-- Feature 01: Full-width, horizontal layout -->
+        <div class="feature-card feature-wide" role="listitem" data-reveal>
+          <div class="feature-num" aria-hidden="true">01</div>
+          <div class="feature-body">
+            <h3 class="feature-title">Understand instantly</h3>
+            <p class="feature-desc">No bureaucratic jargon. Clear answers to what the scheme is, who qualifies, and exactly how to apply in seconds.</p>
+          </div>
+          <!-- <div class="feature-aside" aria-hidden="true">
+            <span class="feature-aside-stat">6 sec</span>
+            <span class="feature-aside-label">average explanation time</span>
+          </div> -->
         </div>
 
+        <!-- Features 02 + 03: Side by side -->
         <div class="feature-card" role="listitem" data-reveal>
-          <div class="feature-icon-wrap" aria-hidden="true"><i class="fa-solid fa-language"></i></div>
-          <h3 class="feature-title">Your Language</h3>
+          <div class="feature-num" aria-hidden="true">02</div>
+          <h3 class="feature-title">Your language</h3>
           <p class="feature-desc">22+ Indian languages. From Hindi and Tamil to Manipuri, Sindhi, and beyond — in the language you think in.</p>
         </div>
 
         <div class="feature-card" role="listitem" data-reveal>
-          <div class="feature-icon-wrap" aria-hidden="true"><i class="fa-solid fa-file-arrow-up"></i></div>
-          <h3 class="feature-title">Any Document</h3>
+          <div class="feature-num" aria-hidden="true">03</div>
+          <h3 class="feature-title">Any document</h3>
           <p class="feature-desc">PDFs, photos, and government website links. If you can share it, BhashaBridge can explain it.</p>
         </div>
 
-        <div class="feature-card" role="listitem" data-reveal>
-          <div class="feature-icon-wrap" aria-hidden="true"><i class="fa-solid fa-hand-holding-heart"></i></div>
-          <h3 class="feature-title">Accessible</h3>
-          <p class="feature-desc">Designed for people, not paperwork. Works on basic Android phones, even on slow connections.</p>
+        <!-- Feature 04: Full-width strip with left border accent -->
+        <div class="feature-card feature-strip" role="listitem" data-reveal>
+          <div class="feature-num" aria-hidden="true">04</div>
+          <div class="feature-body">
+            <h3 class="feature-title">Accessible by design</h3>
+            <p class="feature-desc">Works on basic Android phones, even on slow 2G connections. Free, always — because every Indian deserves to understand their rights.</p>
+          </div>
         </div>
 
       </div>
